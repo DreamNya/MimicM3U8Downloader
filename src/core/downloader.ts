@@ -41,8 +41,8 @@ export class M3u8Downloader {
             logger.log(`存储路径：${this.#config.workDir}`);
             logger.log(`开始解析：${this.#config.url}`, { colorful: true });
 
-            const parser = new M3u8Parser(this.#config.url, this.#tempDir);
-            const { segments, totalDuration } = await parser.parse();
+            const parser = new M3u8Parser(this.#config.url, this.#tempDir, this.#config);
+            const { segments, totalDuration, hasMap } = await parser.parse();
             this.#totalDuration = totalDuration;
             this.#totalCount = segments.length;
 
@@ -51,13 +51,14 @@ export class M3u8Downloader {
             logger.log(`总分片：${this.#totalCount}，已选择分片：${this.#totalCount}`);
 
             const isResumable = await this.#initResumableDownload();
-            await this.#checkFirstSegment(segments, isResumable);
+            await this.#checkFirstSegment(segments, isResumable, hasMap);
 
+            const indexOffset = isResumable ? 0 : hasMap ? 0 : 1;
             this.#startProgressTimer();
-            await this.#downloadSegments(segments, isResumable);
+            await this.#downloadSegments(segments, indexOffset);
 
             this.#stopProgressTimer();
-            await this.#handleDownloadCompletion();
+            await this.#handleDownloadCompletion(hasMap);
         } catch (err) {
             if (this.#timer) {
                 clearInterval(this.#timer);
@@ -84,35 +85,42 @@ export class M3u8Downloader {
         }
     }
 
-    async #checkFirstSegment(segments: Segment[], isResumable: boolean): Promise<void> {
-        logger.log(`开始下载文件`, { colorful: true }); //
+    async #checkFirstSegment(segments: Segment[], isResumable: boolean, hasMap: boolean): Promise<void> {
+        logger.log(`开始下载文件`, { colorful: true });
 
         if (isResumable) {
             return;
         }
 
         logger.log(`下载首分片...`);
-        const firstSegment = segments.shift();
-        if (!firstSegment) {
-            return;
+        if (!hasMap) {
+            const firstSegment = segments.shift();
+            if (!firstSegment) {
+                return;
+            }
+
+            const firstResult = await this.#downloadSegment(firstSegment.url, 0);
+            if (firstResult !== "downloaded") {
+                throw new Error("首分片下载失败");
+            }
         }
 
-        const firstResult = await this.#downloadSegment(firstSegment.url, 0);
-        if (firstResult !== "downloaded") {
-            throw new Error("首分片下载失败");
-        }
+        const segmentPath = hasMap ? path.join(this.#tempDir, "!MAP.ts") : path.join(this.#tsDir, "000000.ts");
 
-        const segmentInfo = await parseSegmentInfo(path.join(this.#tsDir, "000000.ts"));
+        const segmentInfo = await parseSegmentInfo(segmentPath);
         logger.log(`读取文件信息...\n${segmentInfo}`, { colorful: true });
+        if (!segmentInfo) {
+            logger.error("未读取到文件信息，可能是已加密或不支持的格式");
+        }
     }
 
-    async #downloadSegments(segments: Segment[], isResumable: boolean): Promise<void> {
+    async #downloadSegments(segments: Segment[], indexOffset: number): Promise<void> {
         logger.log(`等待下载完成...`, { colorful: true });
         const limit = pLimit(this.#config.concurrency);
 
         const downloadTasks = segments.map(({ url: tsUrl }, i) => {
             // 根据是否断点续传对齐索引
-            const index = isResumable ? i : i + 1;
+            const index = i + indexOffset;
             return limit(async () => {
                 await this.#downloadSegment(tsUrl, index).catch((err) =>
                     logger.error(`\n分片 [${index}] 下载错误:${getErrorMessage(err)}`, { print: false })
@@ -124,7 +132,7 @@ export class M3u8Downloader {
         await Promise.all(downloadTasks);
     }
 
-    async #handleDownloadCompletion(): Promise<void> {
+    async #handleDownloadCompletion(hasMap: boolean): Promise<void> {
         const completedCount = this.#downloadedSet.size;
         const isFullyDownloaded = completedCount === this.#totalCount;
 
@@ -132,7 +140,7 @@ export class M3u8Downloader {
         if (isFullyDownloaded) {
             if (!this.#config.noMerge) {
                 logger.log("开始调用 ffmpeg 合并分片...\n", { log: false });
-                await this.#mergeSegmentsWithFFmpeg();
+                await this.#mergeSegmentsWithFFmpeg(hasMap);
             }
         } else {
             logger.error([...this.#failedSet].sort().join("\n"), { log: false });
@@ -140,7 +148,7 @@ export class M3u8Downloader {
             logger.warn(`⚠️ 分片下载不完整：${completedCount}/${this.#totalCount}`);
             if (!this.#config.noMerge && this.#config.forceMerge) {
                 logger.log("forceMerge == true ➔ 开始强制封装已下载分片...");
-                await this.#mergeSegmentsWithFFmpeg();
+                await this.#mergeSegmentsWithFFmpeg(hasMap);
             }
         }
     }
@@ -294,17 +302,17 @@ export class M3u8Downloader {
     /**
      * 拼接并使用 FFmpeg 转换为 MP4
      */
-    async #mergeSegmentsWithFFmpeg(): Promise<void> {
-        const listFilePath = path.join(this.#tempDir, "filelist.txt");
+    async #mergeSegmentsWithFFmpeg(hasMap: boolean): Promise<void> {
         const fileLines = [...this.#downloadedSet]
             .sort()
-            .map((fileName) => `file '${path.resolve(this.#tsDir, fileName).replace(/\\/g, "/")}'`);
+            .map((fileName) => `${path.resolve(this.#tsDir, fileName).replace(/\\/g, "/")}`);
 
-        await fs.writeFile(listFilePath, fileLines.join("\n"), "utf-8");
+        if (hasMap) {
+            fileLines.unshift(`${path.resolve(this.#tempDir, "!MAP.ts").replace(/\\/g, "/")}`);
+        }
 
         try {
-            // 💡 使用 Promise 包裹 spawn，实现异步等待
-            await mergeSegments(listFilePath, this.#outputFile);
+            await mergeSegments(fileLines, this.#outputFile);
             logger.log(`🎉 视频封装合并成功: ${this.#outputFile}`);
             if (this.#config.enableDelAfterDone) {
                 await logger.close();

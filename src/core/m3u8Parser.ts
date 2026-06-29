@@ -1,25 +1,28 @@
 import fs from "node:fs/promises";
-import type { Segment } from "#src/common/types.ts";
+import type { DownloadRuntimeConfig, Segment } from "#src/common/types.ts";
 import { logger } from "#src/common/logger.ts";
 import { impit } from "#src/bin/worker.ts";
+import path from "node:path";
 
 export class M3u8Parser {
     #url: string;
     #tempDir: string;
+    #config: DownloadRuntimeConfig;
 
-    constructor(url: string, tempDir: string) {
+    constructor(url: string, tempDir: string, config: DownloadRuntimeConfig) {
         this.#url = url;
         this.#tempDir = tempDir;
+        this.#config = config;
     }
 
     /**
      * 请求并解析 m3u8 文件
      */
-    async parse(): Promise<{ segments: Segment[]; totalDuration: number }> {
+    async parse(): Promise<{ segments: Segment[]; totalDuration: number; hasMap: boolean }> {
         // 请求媒体列表
         const { content, mediaUrl } = await this.#getM3U8(this.#url);
         // 解析媒体列表
-        return this.#parseMedia(content, mediaUrl);
+        return await this.#parseMedia(content, mediaUrl);
     }
 
     async #getM3U8(url: string, depth = 0): Promise<{ content: string; mediaUrl: string }> {
@@ -99,7 +102,10 @@ export class M3u8Parser {
     /**
      * 解析包含 TS 分片的媒体列表
      */
-    #parseMedia(content: string, mediaUrl: string): { segments: Segment[]; totalDuration: number } {
+    async #parseMedia(
+        content: string,
+        mediaUrl: string
+    ): Promise<{ segments: Segment[]; totalDuration: number; hasMap: boolean }> {
         fs.writeFile(`${this.#tempDir}/video.m3u8`, content).catch(() => void 0);
 
         const lines = content.split("\n");
@@ -107,6 +113,7 @@ export class M3u8Parser {
         const segments: Segment[] = [];
         let currentDuration = 0;
         let totalDuration = 0;
+        let hasMap = false;
 
         for (let line of lines) {
             line = line.trim();
@@ -124,6 +131,51 @@ export class M3u8Parser {
                         const [duration] = value.split(",");
                         currentDuration = Number(duration) || 0;
                         totalDuration += currentDuration;
+                    } else if (tag === "#EXT-X-MAP") {
+                        // TODO 待优化
+                        const uriMatch = value.match(/URI=["']([^"']+)["']/);
+                        if (uriMatch) {
+                            const mapUri = uriMatch[1];
+                            const fullMapUrl = mapUri.startsWith("http") ? mapUri : new URL(mapUri, baseUrl).href;
+                            if (hasMap) {
+                                logger.error("[致命错误]出现多个MAP文件");
+                                continue;
+                            }
+                            hasMap = true;
+                            const mapPath = path.join(this.#tempDir, "!MAP.ts");
+                            try {
+                                await fs.access(mapPath);
+                                continue;
+                            } catch {
+                                //
+                            }
+
+                            // 提取可选的 BYTERANGE="length@offset" 属性（有些流的 Map 存在于大文件的指定区间）
+                            const byteRangeMatch = value.match(/BYTERANGE=["'](\d+)(?:@(\d+))?["']/);
+                            const headers = { ...this.#config.headers };
+
+                            if (byteRangeMatch) {
+                                const length = parseInt(byteRangeMatch[1], 10);
+                                const offset = byteRangeMatch[2] ? parseInt(byteRangeMatch[2], 10) : 0;
+                                headers.Range = `bytes=${offset}-${offset + length - 1}`;
+                            }
+
+                            try {
+                                // 请求并下载 Map 文件
+                                logger.log("下载MAP文件...");
+                                logger.log(fullMapUrl, { print: false });
+                                const mapResponse = await impit.fetch(fullMapUrl, { headers });
+                                if (mapResponse.ok || mapResponse.status === 206) {
+                                    const arrayBuffer = await mapResponse.arrayBuffer();
+                                    // 保存到临时目录下，避免混同
+                                    await fs.writeFile(`${this.#tempDir}/!MAP.ts`, Buffer.from(arrayBuffer));
+                                } else {
+                                    logger.error(`[MAP 文件] 远程服务器返回错误: ${mapResponse.status}`);
+                                }
+                            } catch (downloadErr) {
+                                logger.error(`[MAP 文件] 下载发生错误: ${downloadErr}`);
+                            }
+                        }
                     }
                 } else {
                     const fullUrl = line.startsWith("http") ? line : new URL(line, baseUrl).href;
@@ -141,6 +193,7 @@ export class M3u8Parser {
         return {
             segments,
             totalDuration: Math.floor(totalDuration),
+            hasMap,
         };
     }
 }
