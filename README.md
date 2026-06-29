@@ -1,0 +1,2 @@
+# MimicM3U8Downloader
+MimicM3U8Downloader 拟态M3U8下载器，一款可对抗防爬策略的反TLS指纹 M3U8 视频流下载器
