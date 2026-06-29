@@ -63,3 +63,20 @@ export function getErrorMessage(error: unknown): string {
 export function typedEntries<T extends object>(obj: T) {
     return Object.entries(obj) as Array<[keyof T, T[keyof T]]>;
 }
+
+export async function waitBeforeExit(): Promise<void> {
+    console.log("\n\n按任意键退出程序...");
+    await new Promise<void>((resolve) => {
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+        }
+        process.stdin.resume();
+        process.stdin.once("data", () => {
+            if (process.stdin.isTTY) {
+                process.stdin.setRawMode(false);
+            }
+            process.stdin.pause();
+            resolve();
+        });
+    });
+}

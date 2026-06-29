@@ -1,11 +1,61 @@
-import type { DownloadOptions, UserPayload } from "#src/common/types.ts";
-import { ATOB, typedEntries } from "#src/common/utils.ts";
+import type { DownloadOptions, DownloadRuntimeConfig, UserPayload } from "#src/common/types.ts";
+import { ATOB, sanitizeFilename, typedEntries } from "#src/common/utils.ts";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
+import fs from "node:fs/promises";
+
+export async function initConfig(): Promise<DownloadRuntimeConfig> {
+    const defaultConfig: DownloadOptions = {
+        browser: "chrome",
+        proxyUrl: "",
+        concurrency: 16,
+        maxRetries: 3,
+        timeout: 60000,
+        enableDelAfterDone: false,
+        noMerge: false,
+        forceMerge: false,
+        headers: {},
+        pauseAfterDone: true,
+    };
+
+    // 解析命令行参数
+    const { values } = parseArgs({
+        options: {
+            arg: { type: "string" },
+            url: { type: "string" },
+            saveName: { type: "string" },
+            workDir: { type: "string" },
+            ...buildOptions(defaultConfig),
+        },
+        strict: true,
+    });
+
+    // 读取全局配置
+    const globalConfig: Partial<DownloadOptions> = JSON.parse(
+        await fs.readFile(fileURLToPath(import.meta.resolve("#setting/worker.config.json")), "utf-8").catch(() => "{}")
+    );
+
+    const userConfig: UserPayload = parseUserConfig(values, defaultConfig);
+
+    const config: DownloadRuntimeConfig = {
+        ...defaultConfig,
+        ...globalConfig,
+        ...userConfig,
+    };
+
+    config.saveName = sanitizeFilename(config.saveName);
+
+    if (!config.url || !config.saveName || !config.workDir) {
+        throw new Error("❌ 错误：配置中缺少核心参数 url / saveName / workDir");
+    }
+    return config;
+}
 
 type CLIValues = {
     [K in keyof UserPayload]?: string;
 } & { arg?: string };
 
-export function buildOptions<T extends object>(obj: T) {
+function buildOptions<T extends object>(obj: T) {
     return Object.fromEntries(
         Object.keys(obj).map((key) => [
             key,
@@ -20,13 +70,12 @@ export function buildOptions<T extends object>(obj: T) {
     };
 }
 
-export function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOptions): UserPayload {
+function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOptions): UserPayload {
     // 🌟 核心：利用解构赋值，把 arg 剥离出来，剩余的属性自动组合成一个全新的 restCliValues 对象
     const { arg, ...restCliValues } = cliValues;
     if (arg) {
         if (!arg.startsWith("m3u8mimic://")) {
-            console.error("❌ 错误：缺少必需的命令行输入参数 '--arg'，或参数格式不正确");
-            process.exit(1);
+            throw new Error("❌ 错误：缺少必需的命令行输入参数 '--arg'，或参数格式不正确");
         }
         const parsedArg = arg.replace(/^m3u8mimic:\/\//, "").replace(/\/$/, "");
         return JSON.parse(ATOB(parsedArg)) as UserPayload;
