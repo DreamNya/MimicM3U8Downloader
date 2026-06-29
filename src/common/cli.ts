@@ -1,35 +1,35 @@
-import type { DownloadOptions, DownloadTarget, UserPayload } from "#src/common/types.ts";
+import type { DownloadOptions, UserPayload } from "#src/common/types.ts";
 import { ATOB, typedEntries } from "#src/common/utils.ts";
 
-export type CLIValues = {
-    [K in keyof DownloadOptions]?: DownloadOptions[K] extends boolean ? boolean : string;
-} & {
-    [K in keyof DownloadTarget]?: string;
+type CLIValues = {
+    [K in keyof UserPayload]?: string;
 } & { arg?: string };
 
 export function buildOptions<T extends object>(obj: T) {
     return Object.fromEntries(
-        (Object.entries(obj) as Array<[string, unknown]>).map(([key, value]) => [
+        Object.keys(obj).map((key) => [
             key,
             {
-                type: (typeof value === "boolean" ? "boolean" : "string") as "boolean" | "string",
+                type: "string" as const,
             },
         ])
     ) as {
         [K in keyof T]: {
-            type: T[K] extends boolean ? "boolean" : "string";
+            type: "string";
         };
     };
 }
 
 export function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOptions): UserPayload {
-    if (cliValues.arg) {
-        if (!cliValues.arg.startsWith("m3u8mimic://")) {
+    // 🌟 核心：利用解构赋值，把 arg 剥离出来，剩余的属性自动组合成一个全新的 restCliValues 对象
+    const { arg, ...restCliValues } = cliValues;
+    if (arg) {
+        if (!arg.startsWith("m3u8mimic://")) {
             console.error("❌ 错误：缺少必需的命令行输入参数 '--arg'，或参数格式不正确");
             process.exit(1);
         }
-        const arg = cliValues.arg.replace(/^m3u8mimic:\/\//, "").replace(/\/$/, "");
-        return JSON.parse(ATOB(arg)) as UserPayload;
+        const parsedArg = arg.replace(/^m3u8mimic:\/\//, "").replace(/\/$/, "");
+        return JSON.parse(ATOB(parsedArg)) as UserPayload;
     }
 
     const configRef = {} as UserPayload;
@@ -39,8 +39,8 @@ export function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOption
         configRef[key] = value;
     };
 
-    for (const [key, value] of typedEntries(cliValues)) {
-        if (key === "arg" || value === undefined) {
+    for (const [key, value] of typedEntries(restCliValues)) {
+        if (value === undefined) {
             continue;
         }
 
@@ -51,10 +51,12 @@ export function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOption
                 throw new Error(`❌ 错误：'--${String(key)}' 参数必须是数字字符串`);
             }
             setConfigProperty(key, Number(value));
-        } else if (key === "headers") {
-            if (typeof value !== "string") {
-                throw new Error(`❌ 错误：'--${String(key)}' 参数必须是合法的 JSON 字符串`);
+        } else if (defaultType === "boolean") {
+            if (value !== "true" && value !== "false") {
+                throw new Error(`❌ 错误：'--${String(key)}' 参数必须是 'true' 或 'false'`);
             }
+            setConfigProperty(key, value === "true");
+        } else if (key === "headers") {
             try {
                 setConfigProperty(key, JSON.parse(value) as Record<string, string>);
             } catch {
