@@ -59,3 +59,7 @@ export function getErrorMessage(error: unknown): string {
     }
     return String(error);
 }
+
+export function typedEntries<T extends object>(obj: T) {
+    return Object.entries(obj) as Array<[keyof T, T[keyof T]]>;
+}

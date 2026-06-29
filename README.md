@@ -25,7 +25,7 @@
 
 1. **Node.js**
 
-   安装 **Node.js v23.6.0 或更高版本**  
+   安装 **Node.js v23.6.0 或更高版本**  (推荐: Node.js v24+ / latest LTS)
    （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
 
 2. **FFmpeg**

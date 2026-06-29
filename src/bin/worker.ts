@@ -7,7 +7,7 @@ import { M3u8Downloader } from "#src/core/downloader.ts";
 import { initLogger } from "#src/common/logger.ts";
 import { Impit } from "impit";
 import { fileURLToPath } from "node:url";
-import { parseUserConfig } from "#src/common/cli.ts";
+import { buildOptions, parseUserConfig } from "#src/common/cli.ts";
 
 const defaultConfig: DownloadOptions = {
     browser: "chrome",
@@ -29,14 +29,7 @@ const { values } = parseArgs({
         url: { type: "string" },
         saveName: { type: "string" },
         workDir: { type: "string" },
-        ...Object.fromEntries(
-            Object.entries(defaultConfig).map(([key, defaultValue]) => [
-                key,
-                {
-                    type: typeof defaultValue === "boolean" ? "boolean" : "string",
-                },
-            ])
-        ),
+        ...buildOptions(defaultConfig),
     },
     strict: true,
 });
