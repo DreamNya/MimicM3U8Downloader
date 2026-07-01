@@ -64,9 +64,9 @@ export function typedEntries<T extends object>(obj: T) {
     return Object.entries(obj) as Array<[keyof T, T[keyof T]]>;
 }
 
-export async function waitBeforeExit(): Promise<void> {
+export function waitBeforeExit(): Promise<void> {
     console.log("\n\n按任意键退出程序...");
-    await new Promise<void>((resolve) => {
+    return new Promise<void>((resolve) => {
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(true);
         }
@@ -79,4 +79,8 @@ export async function waitBeforeExit(): Promise<void> {
             resolve();
         });
     });
+}
+
+export function sleep(delay: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, delay));
 }

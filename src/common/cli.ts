@@ -4,20 +4,23 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import fs from "node:fs/promises";
 
-export async function initConfig(): Promise<DownloadRuntimeConfig> {
-    const defaultConfig: DownloadOptions = {
-        browser: "chrome",
-        proxyUrl: "",
-        concurrency: 16,
-        maxRetries: 3,
-        timeout: 60000,
-        enableDelAfterDone: false,
-        noMerge: false,
-        forceMerge: false,
-        headers: {},
-        pauseAfterDone: true,
-    };
+const defaultConfig: DownloadOptions = {
+    browser: "chrome",
+    proxyUrl: "",
+    concurrency: 16,
+    maxRetries: 3,
+    timeout: 60000,
+    enableDelAfterDone: false,
+    noMerge: false,
+    forceMerge: false,
+    headers: {},
+    pauseAfterDone: true,
+};
+const _config = { ...defaultConfig } as DownloadRuntimeConfig;
 
+export const config: Readonly<DownloadRuntimeConfig> = _config;
+
+export async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     // 解析命令行参数
     const { values } = parseArgs({
         options: {
@@ -37,15 +40,11 @@ export async function initConfig(): Promise<DownloadRuntimeConfig> {
 
     const userConfig: UserPayload = parseUserConfig(values, defaultConfig);
 
-    const config: DownloadRuntimeConfig = {
-        ...defaultConfig,
-        ...globalConfig,
-        ...userConfig,
-    };
+    Object.assign(_config, globalConfig, userConfig);
 
-    config.saveName = sanitizeFilename(config.saveName);
+    _config.saveName = sanitizeFilename(_config.saveName);
 
-    if (!config.url || !config.saveName || !config.workDir) {
+    if (!_config.url || !_config.saveName || !_config.workDir) {
         throw new Error("❌ 错误：配置中缺少核心参数 url / saveName / workDir");
     }
     return config;

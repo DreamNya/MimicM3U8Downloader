@@ -39,7 +39,7 @@ process.on("uncaughtException", (error) => {
 
 // 实例化下载器并运行
 try {
-    const downloader = new M3u8Downloader(config, { workDir, tempDir, tsDir });
+    const downloader = new M3u8Downloader({ workDir, tempDir, tsDir });
     await downloader.start();
 } catch {
     process.exitCode = 1;

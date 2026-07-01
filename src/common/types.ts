@@ -34,8 +34,3 @@ export interface DownloadOptions {
 
 export type DownloadRuntimeConfig = DownloadTarget & DownloadOptions;
 export type UserPayload = DownloadTarget & Partial<DownloadOptions>;
-
-export interface Segment {
-    url: string;
-    duration: number;
-}
