@@ -97,7 +97,7 @@ export class M3u8Downloader {
                     fileName: firstSegmentName,
                 });
                 if (result.ok) {
-                    progressTracker.recordSuccess(firstSegmentName);
+                    progressTracker.add("success", firstSegmentName);
                 } else {
                     throw new Error("首分片下载失败");
                 }
@@ -123,7 +123,7 @@ export class M3u8Downloader {
             const filePath = path.join(this.#tsDir, fileName);
 
             return limit(async () => {
-                if (progressTracker.getDownloadedSet().has(fileName)) {
+                if (progressTracker.has("success", fileName)) {
                     return;
                 }
                 const result = await downloadSegment({
@@ -133,9 +133,9 @@ export class M3u8Downloader {
                     maxRetries: config.maxRetries,
                 });
                 if (result.ok) {
-                    progressTracker.recordSuccess(fileName);
+                    progressTracker.add("success", fileName);
                 } else {
-                    progressTracker.recordFailed(result.failedMessage);
+                    progressTracker.add("failed", result.failedMessage);
                 }
                 progressTracker.print();
             });
@@ -145,10 +145,10 @@ export class M3u8Downloader {
     }
 
     async #handleDownloadCompletion(mapInfo: ParsedM3u8["mapInfo"]): Promise<void> {
-        const completedCount = progressTracker.getDownloadedCount();
+        const completedCount = progressTracker.size("success");
 
         console.log("\n");
-        const failedSet = progressTracker.getFailedSet();
+        const failedSet = progressTracker.get("failed");
         if (failedSet.size === 0) {
             if (!config.noMerge) {
                 logger.log("开始调用 ffmpeg 合并分片...\n", { log: false });
@@ -171,16 +171,16 @@ export class M3u8Downloader {
                 const filePath = path.join(this.#tsDir, file);
 
                 if (file.endsWith(".ts")) {
-                    progressTracker.recordSuccess(file);
+                    progressTracker.add("success", file);
                     const { size } = await fs.stat(filePath);
                     progressTracker.recordChunk(size);
                 } else if (file.endsWith(".tmp")) {
-                    // await fs.unlink(filePath);
+                    progressTracker.add("cache", file);
                 }
             })
         );
 
-        const count = progressTracker.getDownloadedCount();
+        const count = progressTracker.size("success");
         if (count > 0) {
             logger.log(`➔ 断点续传分片：${count}`);
             return true;
@@ -189,7 +189,7 @@ export class M3u8Downloader {
     }
 
     async #mergeSegmentsWithFFmpeg(mapInfo: ParsedM3u8["mapInfo"]): Promise<void> {
-        const downloadedSet = progressTracker.getDownloadedSet();
+        const downloadedSet = progressTracker.get("success");
         const fileLines: string[] = [...downloadedSet]
             .sort()
             .map((fileName) => `${path.resolve(this.#tsDir, fileName).replace(/\\/g, "/")}`);

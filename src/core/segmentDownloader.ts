@@ -109,9 +109,11 @@ async function pipeStreamWithProgress(body: ImpitResponse["body"], tmpFilePath: 
 export async function downloadSegment(info: DownloadInfo, retryCount = 0, bytesTrack = 0): Promise<DownloadResult> {
     const { url, filePath, fileName, headers = {}, maxRetries = 3 } = info;
     const tmpFilePath = `${filePath}.tmp`;
+    const tmpFile = fileName.replace(/.[^.]+$/, ".tmp");
+    const hasTmpFile = progressTracker.has("cache", tmpFile) || retryCount;
 
     const result: DownloadResult = { ok: false, failedMessage: "" };
-    const existingSize = await getExistingSize(tmpFilePath);
+    const existingSize = hasTmpFile ? await getExistingSize(tmpFilePath) : 0;
 
     try {
         const fetchOptions: ImpitOptions = { headers: { ...headers } };
@@ -180,6 +182,10 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0, bytesT
             logger.error(message, { print: false });
             result.failedMessage = message;
             return result;
+        }
+    } finally {
+        if (hasTmpFile) {
+            progressTracker.delete("cache", tmpFile);
         }
     }
 }

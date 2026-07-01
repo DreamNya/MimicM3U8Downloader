@@ -1,6 +1,8 @@
 import { formatBytes, formatTime } from "#src/common/utils.ts";
 import { logger } from "#src/common/logger.ts";
 
+type RecordType = "success" | "failed" | "cache";
+
 class ProgressTracker {
     #totalCount!: number;
     #downloadedBytes = 0;
@@ -8,8 +10,11 @@ class ProgressTracker {
     #currentSpeed = 0;
     #timer: NodeJS.Timeout | null = null;
 
-    #downloadedSet = new Set<string>();
-    #failedSet = new Set<string>();
+    #sets: Record<RecordType, Set<string>> = {
+        success: new Set(),
+        failed: new Set(),
+        cache: new Set(),
+    };
 
     start(totalCount: number): void {
         this.#totalCount = totalCount;
@@ -37,37 +42,37 @@ class ProgressTracker {
         this.#downloadedBytes -= bytes;
     }
 
-    recordSuccess(fileName: string): void {
-        this.#downloadedSet.add(fileName);
-    }
-
-    recordFailed(errorMsg: string): void {
-        this.#failedSet.add(errorMsg);
-    }
-
-    getDownloadedCount(): number {
-        return this.#downloadedSet.size;
-    }
-
     getDownloadedBytes(): number {
         return this.#downloadedBytes;
     }
 
-    getDownloadedSet(): ReadonlySet<string> {
-        return this.#downloadedSet;
+    add(type: RecordType, value: string): void {
+        this.#sets[type].add(value);
     }
 
-    getFailedSet(): ReadonlySet<string> {
-        return this.#failedSet;
+    delete(type: RecordType, value: string): boolean {
+        return this.#sets[type].delete(value);
+    }
+
+    has(type: RecordType, value: string): boolean {
+        return this.#sets[type].has(value);
+    }
+
+    get(type: RecordType): ReadonlySet<string> {
+        return this.#sets[type];
+    }
+
+    size(type: RecordType): number {
+        return this.#sets[type].size;
     }
 
     print(): void {
-        const completedCount = this.#downloadedSet.size;
+        const completedCount = this.size("success");
         if (completedCount === 0) {
             return;
         }
 
-        const failedCount = this.#failedSet.size;
+        const failedCount = this.size("failed");
         const failedStr = failedCount ? `-${failedCount}` : "";
         const downloadedSizeStr = formatBytes(this.#downloadedBytes);
         const totalSize = (this.#downloadedBytes / completedCount) * this.#totalCount;
