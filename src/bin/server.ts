@@ -1,7 +1,7 @@
-import http from "node:http";
+import { BTOA, getErrorMessage } from "#src/common/utils.ts";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
-import { BTOA, getErrorMessage } from "#src/common/utils.ts";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 
 // JSON解析失败则立即抛出错误终止运行

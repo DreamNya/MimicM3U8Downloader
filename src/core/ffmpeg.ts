@@ -1,9 +1,9 @@
-import fs from "node:fs";
-import { spawn } from "node:child_process";
 import { logger } from "#src/common/logger.ts";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
 import { getErrorMessage } from "#src/common/utils.ts";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export async function parseSegmentInfo(filePath: string): Promise<string> {
     const info = await getVideoInfo(filePath);

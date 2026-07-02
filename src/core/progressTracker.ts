@@ -1,5 +1,5 @@
-import { formatBytes, formatTime } from "#src/common/utils.ts";
 import { logger } from "#src/common/logger.ts";
+import { formatBytes, formatTime } from "#src/common/utils.ts";
 
 type RecordType = "success" | "failed" | "cache";
 

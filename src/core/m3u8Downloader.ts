@@ -1,16 +1,16 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import pLimit from "p-limit";
+import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { formatTime, getErrorMessage } from "#src/common/utils.ts";
+import { mergeSegments, parseSegmentInfo } from "#src/core/ffmpeg.ts";
 import { M3u8Parser, type ParsedM3u8, type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
 import { downloadSegment } from "#src/core/segmentDownloader.ts";
-import { mergeSegments, parseSegmentInfo } from "#src/core/ffmpeg.ts";
-import { config } from "#src/common/cli.ts";
 import type { ImpitOptions } from "impit";
+import fs from "node:fs/promises";
+import path from "node:path";
+import pLimit from "p-limit";
 
-export class M3u8Downloader {
+export class M3U8Downloader {
     #tempDir: string;
     #tsDir: string;
     #outputFile: string;

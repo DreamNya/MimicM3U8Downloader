@@ -1,12 +1,12 @@
-import fs from "node:fs/promises";
-import { createWriteStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
 import { impit } from "#src/bin/worker.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, sleep } from "#src/common/utils.ts";
+import { progressTracker } from "#src/core/progressTracker.ts";
 import type { ImpitOptions, ImpitResponse } from "impit";
-import { progressTracker } from "./progressTracker.ts";
+import { createWriteStream } from "node:fs";
+import fs from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
 export interface DownloadInfo {
     url: string;

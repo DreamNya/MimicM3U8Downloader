@@ -1,8 +1,8 @@
 import type { DownloadOptions, DownloadRuntimeConfig, UserPayload } from "#src/common/types.ts";
 import { ATOB, sanitizeFilename, typedEntries } from "#src/common/utils.ts";
+import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import fs from "node:fs/promises";
 
 const defaultConfig: DownloadOptions = {
     browser: "chrome",
