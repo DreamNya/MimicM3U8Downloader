@@ -30,7 +30,16 @@ export interface DownloadOptions {
     headers: Record<string, string>;
     // 下载完毕后暂停交互窗口 (Default:true)
     pauseAfterDone: boolean;
+    // 记录debug中间产物 (Default:false)
+    debug: boolean;
 }
 
-export type DownloadRuntimeConfig = DownloadTarget & DownloadOptions;
+export interface DownloadWorkspace {
+    tempDir: string;
+    tsDir: string;
+    outputFile: string;
+}
+
+export type DownloadInputConfig = DownloadTarget & DownloadOptions;
+export type DownloadRuntimeConfig = DownloadInputConfig & DownloadWorkspace;
 export type UserPayload = DownloadTarget & Partial<DownloadOptions>;

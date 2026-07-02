@@ -1,6 +1,7 @@
-import type { DownloadOptions, DownloadRuntimeConfig, UserPayload } from "#src/common/types.ts";
-import { ATOB, sanitizeFilename, typedEntries } from "#src/common/utils.ts";
+import type { DownloadInputConfig, DownloadOptions, DownloadRuntimeConfig, UserPayload } from "#src/common/types.ts";
+import { ATOB, sanitizeFilename, typedEntries, waitBeforeExit } from "#src/common/utils.ts";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -15,12 +16,16 @@ const defaultConfig: DownloadOptions = {
     forceMerge: false,
     headers: {},
     pauseAfterDone: true,
+    debug: false,
 };
-const _config = { ...defaultConfig } as DownloadRuntimeConfig;
 
-export const config: Readonly<DownloadRuntimeConfig> = _config;
+export const config: Readonly<DownloadRuntimeConfig> = await initConfig().catch(async (err) => {
+    console.error(err);
+    await waitBeforeExit();
+    process.exit(1);
+});
 
-export async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
+async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     // 解析命令行参数
     const { values } = parseArgs({
         options: {
@@ -40,14 +45,35 @@ export async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
 
     const userConfig: UserPayload = parseUserConfig(values, defaultConfig);
 
-    Object.assign(_config, globalConfig, userConfig);
+    const config = await formatConfig({
+        ...defaultConfig,
+        ...globalConfig,
+        ...userConfig,
+    });
 
-    _config.saveName = sanitizeFilename(_config.saveName);
-
-    if (!_config.url || !_config.saveName || !_config.workDir) {
+    if (!config.url || !config.saveName || !config.workDir) {
         throw new Error("❌ 错误：配置中缺少核心参数 url / saveName / workDir");
     }
     return config;
+}
+
+export async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntimeConfig> {
+    const saveName = sanitizeFilename(config.saveName);
+    const workDir = config.workDir.replace(/\/$/, "");
+    const tempDir = path.join(workDir, saveName);
+    const tsDir = path.join(tempDir, "tsFile");
+    const outputFile = path.join(workDir, `${saveName}.mp4`);
+
+    await fs.mkdir(tsDir, { recursive: true });
+
+    return {
+        ...config,
+        saveName,
+        workDir,
+        tempDir,
+        tsDir,
+        outputFile,
+    };
 }
 
 type CLIValues = {

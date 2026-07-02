@@ -1,15 +1,20 @@
-import { impit } from "#src/bin/worker.ts";
+import { impit } from "#src/common/fetch.ts";
 import { logger } from "#src/common/logger.ts";
 
 export interface Segment {
     url: string;
     duration: number;
+    keyInfo?: {
+        method: "AES-128";
+        url?: string;
+        iv?: Buffer;
+    };
 }
 
 export interface ParsedM3u8 {
     segments: Segment[];
     totalDuration: number;
-    mapInfo?: { url: string; byteRange?: string };
+    mapInfo?: { url: string; byteRange?: string; keyInfo: Segment["keyInfo"] };
     rawMasterContent?: string;
     rawMediaContent?: string;
 }
@@ -113,6 +118,9 @@ export class M3u8Parser {
         let totalDuration = 0;
         let mapInfo: ParsedM3u8["mapInfo"];
 
+        let mediaSequence = 0;
+        let currentKeyInfo: { method: string; url?: string; rawIv?: string } | undefined = undefined;
+
         for (let line of lines) {
             line = line.trim();
             if (!line || line.startsWith("#EXTM3U")) {
@@ -129,6 +137,24 @@ export class M3u8Parser {
                         const [duration] = value.split(",");
                         currentDuration = Number(duration) || 0;
                         totalDuration += currentDuration;
+                    } else if (tag === "#EXT-X-KEY") {
+                        const methodMatch = value.match(/METHOD=([^,]+)/);
+                        const method = methodMatch ? methodMatch[1].trim() : "NONE";
+
+                        if (method === "AES-128") {
+                            const uriMatch = value.match(/URI=["']([^"']+)["']/);
+                            if (uriMatch) {
+                                const ivMatch = value.match(/IV=0x([0-9a-fA-F]+)/);
+                                currentKeyInfo = {
+                                    method: "AES-128",
+                                    url: this.#resolveUrl(uriMatch[1], baseUrl),
+                                    rawIv: ivMatch?.[1],
+                                };
+                            }
+                        } else {
+                            logger.warn(`m3u8 解析到不支持的加密方式：${method}`);
+                            currentKeyInfo = undefined;
+                        }
                     }
                     // 解析 MAP 信息
                     else if (tag === "#EXT-X-MAP") {
@@ -138,17 +164,52 @@ export class M3u8Parser {
                                 throw new Error("media.m3u8 找到多个MAP文件");
                             }
                             const byteRangeMatch = value.match(/BYTERANGE=["']([^"']+)["']/);
+                            let mapKeyInfo: Segment["keyInfo"] = undefined;
+                            if (currentKeyInfo?.method === "AES-128") {
+                                mapKeyInfo = {
+                                    method: "AES-128",
+                                    url: currentKeyInfo.url,
+                                    // 根据规范，加密 MAP 必须有显式 IV，如缺省则初始化 16 字节全零
+                                    iv: currentKeyInfo.rawIv
+                                        ? Buffer.from(currentKeyInfo.rawIv.padStart(32, "0"), "hex")
+                                        : Buffer.alloc(16),
+                                };
+                            }
                             mapInfo = {
                                 url: this.#resolveUrl(uriMatch[1], baseUrl),
                                 byteRange: byteRangeMatch?.[1],
+                                keyInfo: mapKeyInfo,
                             };
                         }
                     }
                 } else {
+                    let segmentKeyInfo: Segment["keyInfo"] = undefined;
+                    if (currentKeyInfo?.method === "AES-128") {
+                        let ivBuffer: Buffer;
+                        if (currentKeyInfo.rawIv) {
+                            // 如果显式指定了 IV，将其转为 16 字节的 Buffer
+                            ivBuffer = Buffer.from(currentKeyInfo.rawIv.padStart(32, "0"), "hex");
+                        } else {
+                            // 如果未指定 IV，标准 HLS 规定使用大端序的媒体序列号（16字节，前面补零）
+                            ivBuffer = Buffer.alloc(16);
+                            ivBuffer.writeUInt32BE(mediaSequence, 12);
+                        }
+
+                        segmentKeyInfo = {
+                            method: "AES-128",
+                            url: currentKeyInfo.url,
+                            iv: ivBuffer,
+                        };
+                    }
+
                     segments.push({
                         url: this.#resolveUrl(line, baseUrl),
                         duration: currentDuration,
+                        keyInfo: segmentKeyInfo,
                     });
+
+                    // 每一个分片过后，序列号自增
+                    mediaSequence++;
                 }
             } catch (err) {
                 logger.error(`m3u8 行解析错误：${err}`);

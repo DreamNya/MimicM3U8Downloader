@@ -4,46 +4,38 @@ import { formatTime, getErrorMessage } from "#src/common/utils.ts";
 import { mergeSegments, parseSegmentInfo } from "#src/core/ffmpeg.ts";
 import { M3u8Parser, type ParsedM3u8, type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
-import { downloadSegment } from "#src/core/segmentDownloader.ts";
+import { downloadSegment, preflightKeys } from "#src/core/segmentDownloader.ts";
 import type { ImpitOptions } from "impit";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
 
 export class M3U8Downloader {
-    #tempDir: string;
-    #tsDir: string;
-    #outputFile: string;
-
-    constructor({ workDir, tempDir, tsDir }: Record<string, string>) {
-        this.#tempDir = tempDir;
-        this.#tsDir = tsDir;
-        this.#outputFile = path.join(workDir, `${config.saveName}.mp4`);
-    }
-
     async start(): Promise<void> {
         try {
             logger.log(`文件名称：${config.saveName}`);
             logger.log(`存储路径：${config.workDir}`);
             logger.log(`开始解析：${config.url}`, { colorful: true });
 
-            // 1. 纯解析
             const parser = new M3u8Parser(config.url);
             const { segments, totalDuration, mapInfo, rawMasterContent, rawMediaContent } = await parser.parse();
-            this.logM3U8File(rawMasterContent, rawMediaContent);
+            this.logFiles(segments, rawMasterContent, rawMediaContent);
 
             logger.log(`文件时长：${formatTime(totalDuration)}`);
             // TODO 自定义分片范围
             logger.log(`总分片：${segments.length}`);
 
+            // 预检密钥
+            await preflightKeys(segments);
+            // 初始化断点续传
             const isResumable = await this.#initResumableDownload();
 
-            // 3. 处理 MAP 文件的下载与信息读取
+            // 处理 MAP 文件的下载与信息读取
             await this.#handleMapAndInfo(mapInfo, isResumable, segments);
 
-            // 4. 批量并发下载切片
+            // 并发下载切片
             const indexOffset = isResumable ? 0 : mapInfo ? 0 : 1;
-            progressTracker.start(segments.length);
+            progressTracker.start(segments.length + indexOffset);
             await this.#downloadAllSegments(segments, indexOffset);
             progressTracker.stop();
 
@@ -65,8 +57,8 @@ export class M3U8Downloader {
 
         const mapFileName = "!MAP.ts";
         const firstSegmentName = "000000.ts";
-        const mapPath = path.join(this.#tempDir, mapFileName);
-        const firstSegmentPath = path.join(this.#tsDir, firstSegmentName);
+        const mapPath = path.join(config.tempDir, mapFileName);
+        const firstSegmentPath = path.join(config.tsDir, firstSegmentName);
 
         // 如果包含 MAP 则以 MAP为首分片读取视频信息
         if (mapInfo) {
@@ -81,6 +73,7 @@ export class M3U8Downloader {
                 filePath: mapPath,
                 fileName: mapFileName,
                 headers,
+                keyInfo: mapInfo.keyInfo,
             });
             if (!result.ok) {
                 throw new Error("首分片下载失败");
@@ -95,6 +88,7 @@ export class M3U8Downloader {
                     url: firstSegment.url,
                     filePath: firstSegmentPath,
                     fileName: firstSegmentName,
+                    keyInfo: firstSegment.keyInfo,
                 });
                 if (result.ok) {
                     progressTracker.add("success", firstSegmentName);
@@ -116,21 +110,22 @@ export class M3U8Downloader {
         logger.log(`等待下载完成...`, { colorful: true });
         const limit = pLimit(config.concurrency);
 
-        const downloadTasks = segments.map(({ url: tsUrl }, i) => {
+        const downloadTasks = segments.map(({ url, keyInfo }, i) => {
             // 根据是否下载首分片对齐索引 // TODO
             const index = i + indexOffset;
             const fileName = `${String(index).padStart(6, "0")}.ts`;
-            const filePath = path.join(this.#tsDir, fileName);
+            const filePath = path.join(config.tsDir, fileName);
 
             return limit(async () => {
                 if (progressTracker.has("success", fileName)) {
                     return;
                 }
                 const result = await downloadSegment({
-                    url: tsUrl,
+                    url,
                     filePath,
                     fileName,
                     maxRetries: config.maxRetries,
+                    keyInfo,
                 });
                 if (result.ok) {
                     progressTracker.add("success", fileName);
@@ -165,10 +160,10 @@ export class M3U8Downloader {
     }
 
     async #initResumableDownload(): Promise<boolean> {
-        const files = await fs.readdir(this.#tsDir);
+        const files = await fs.readdir(config.tsDir);
         await Promise.all(
             files.map(async (file) => {
-                const filePath = path.join(this.#tsDir, file);
+                const filePath = path.join(config.tsDir, file);
 
                 if (file.endsWith(".ts")) {
                     progressTracker.add("success", file);
@@ -192,18 +187,22 @@ export class M3U8Downloader {
         const downloadedSet = progressTracker.get("success");
         const fileLines: string[] = [...downloadedSet]
             .sort()
-            .map((fileName) => `${path.resolve(this.#tsDir, fileName).replace(/\\/g, "/")}`);
+            .map((fileName) => `${path.resolve(config.tsDir, fileName).replace(/\\/g, "/")}`);
 
         if (mapInfo) {
-            fileLines.unshift(`${path.resolve(this.#tempDir, "!MAP.ts").replace(/\\/g, "/")}`);
+            fileLines.unshift(`${path.resolve(config.tempDir, "!MAP.ts").replace(/\\/g, "/")}`);
+        }
+
+        if (config.debug) {
+            logger.file("filelist.json", JSON.stringify(fileLines, null, 2));
         }
 
         try {
-            await mergeSegments(fileLines, this.#outputFile);
-            logger.log(`🎉 视频封装合并成功: ${this.#outputFile}`);
+            await mergeSegments(fileLines, config.outputFile);
+            logger.log(`🎉 视频封装合并成功: ${config.outputFile}`);
             if (config.enableDelAfterDone) {
                 await logger.close();
-                await fs.rm(this.#tempDir, { recursive: true, force: true });
+                await fs.rm(config.tempDir, { recursive: true, force: true });
                 logger.log("🧹 已清理全部临时缓存分片");
             }
         } catch (err) {
@@ -211,12 +210,15 @@ export class M3U8Downloader {
         }
     }
 
-    logM3U8File(rawMasterContent?: string, rawMediaContent?: string) {
+    logFiles(segments: Segment[], rawMasterContent?: string, rawMediaContent?: string) {
         if (rawMasterContent) {
             logger.file("master.m3u8", rawMasterContent);
         }
         if (rawMediaContent) {
             logger.file("video.m3u8", rawMediaContent);
+        }
+        if (config.debug) {
+            logger.file("segments.json", JSON.stringify(segments, null, 2));
         }
     }
 }

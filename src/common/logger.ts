@@ -1,16 +1,11 @@
+import { config } from "#src/common/cli.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import fs from "fs";
 import path from "path";
 
 class Logger {
-    #TEMP_DIR: string;
-    #FILEPATH: string;
-    #stream: fs.WriteStream;
-    constructor(TEMP_DIR: string) {
-        this.#TEMP_DIR = TEMP_DIR;
-        this.#FILEPATH = `${TEMP_DIR}/${Date.now()}.log`;
-        this.#stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
-    }
+    #FILEPATH = `${config.tempDir}/${Date.now()}.log`;
+    #stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
 
     log(message: string, { print = true, log = true, colorful = false } = {}): void {
         const timeStamp = this.now();
@@ -73,14 +68,9 @@ class Logger {
     }
     file(fileName: string, data: string): void {
         fs.promises
-            .writeFile(path.join(this.#TEMP_DIR, fileName), data)
+            .writeFile(path.join(config.tempDir, fileName), data)
             .catch((err) => this.error(`文件 [${fileName}] 写入失败：${getErrorMessage(err)}`));
     }
 }
 
-export let logger: Logger;
-
-export function initLogger(tempDir: string) {
-    logger = new Logger(tempDir);
-    return logger;
-}
+export const logger = new Logger();

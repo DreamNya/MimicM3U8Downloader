@@ -1,12 +1,14 @@
-import { impit } from "#src/bin/worker.ts";
+import { impit } from "#src/common/fetch.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, sleep } from "#src/common/utils.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
 import type { ImpitOptions, ImpitResponse } from "impit";
+import crypto from "node:crypto";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { type Segment } from "./m3u8Parser.ts";
 
 export interface DownloadInfo {
     url: string;
@@ -14,11 +16,60 @@ export interface DownloadInfo {
     fileName: string;
     headers?: ImpitOptions["headers"];
     maxRetries?: number;
+    keyInfo?: Segment["keyInfo"];
 }
 
 export interface DownloadResult {
     ok: boolean;
     failedMessage: string;
+}
+
+// 密钥缓存，防止重复请求
+const keyCache = new Map<string, Buffer>();
+
+/**
+ * 校验并缓存所有密钥
+ * @throws {Error} 如果密钥下载失败或格式不合法，直接抛出异常以中断程序
+ */
+export async function preflightKeys(segments: Segment[]): Promise<void> {
+    const keyUrls = new Set<string>();
+    for (const seg of segments) {
+        if (seg.keyInfo?.url) {
+            keyUrls.add(seg.keyInfo.url);
+        }
+    }
+
+    if (keyUrls.size === 0) {
+        return;
+    }
+
+    logger.log(`🔒 检测到加密流，开始预检密钥 (共 ${keyUrls.size} 个)...`, { colorful: true });
+
+    for (const url of keyUrls) {
+        try {
+            const response = await impit.fetch(url);
+            if (!response.ok) {
+                throw new Error(`远程服务器返回错误代码 (${response.status})`);
+            }
+
+            const arrayBuffer = await response.arrayBuffer();
+            const keyBuffer = Buffer.from(arrayBuffer);
+
+            // 标准的 AES-128 Key 必须是 16 字节 (128 比特)
+            if (keyBuffer.length !== 16) {
+                throw new Error(`非标准的密钥长度！期待 16 字节，实际收到 ${keyBuffer.length} 字节`);
+            }
+
+            // 3. 校验通过，直接写入当前模块的内存缓存
+            keyCache.set(url, keyBuffer);
+            logger.log(`➔ 密钥下载成功并缓存: ${url}`, { print: false });
+        } catch (err) {
+            // 一旦出错立刻触发 Fail-Fast，抛出包装后的致命错误
+            throw new Error(`💥 预检密钥失败! URL: ${url} | 原因: ${getErrorMessage(err)}`);
+        }
+    }
+
+    logger.log(`预检密钥全部通过`, { colorful: true });
 }
 
 /**
@@ -73,7 +124,12 @@ async function cleanTmpFile(tmpFilePath: string, bytesTrack: number): Promise<vo
  * 流式写入与进度追踪
  * @returns 本次下载写入的字节数
  */
-async function pipeStreamWithProgress(body: ImpitResponse["body"], tmpFilePath: string, writeFlag: "a" | "w"): Promise<number> {
+async function pipeStreamWithProgress(
+    body: ImpitResponse["body"],
+    tmpFilePath: string,
+    writeFlag: "a" | "w",
+    decryptionConfig?: { key: Buffer; iv: Buffer }
+): Promise<number> {
     const downloadStream = Readable.fromWeb(body);
     const fileStream = createWriteStream(tmpFilePath, { flags: writeFlag });
 
@@ -95,7 +151,13 @@ async function pipeStreamWithProgress(body: ImpitResponse["body"], tmpFilePath: 
     const flushTimer = setInterval(flush, 200);
 
     try {
-        await pipeline(downloadStream, fileStream);
+        if (decryptionConfig) {
+            const decipher = crypto.createDecipheriv("aes-128-cbc", decryptionConfig.key, decryptionConfig.iv);
+
+            await pipeline(downloadStream, decipher, fileStream);
+        } else {
+            await pipeline(downloadStream, fileStream);
+        }
         return localBytesTracked;
     } finally {
         flush();
@@ -107,15 +169,25 @@ async function pipeStreamWithProgress(body: ImpitResponse["body"], tmpFilePath: 
  * 分片下载模块
  */
 export async function downloadSegment(info: DownloadInfo, retryCount = 0, bytesTrack = 0): Promise<DownloadResult> {
-    const { url, filePath, fileName, headers = {}, maxRetries = 3 } = info;
+    const { url, filePath, fileName, headers = {}, maxRetries = 3, keyInfo } = info;
     const tmpFilePath = `${filePath}.tmp`;
     const tmpFile = fileName.replace(/.[^.]+$/, ".tmp");
-    const hasTmpFile = progressTracker.has("cache", tmpFile) || retryCount;
+
+    const isEncrypted = keyInfo;
+    // 如果是加密文件不启用断点续传
+    const hasTmpFile = !isEncrypted && (progressTracker.has("cache", tmpFile) || retryCount);
 
     const result: DownloadResult = { ok: false, failedMessage: "" };
     const existingSize = hasTmpFile ? await getExistingSize(tmpFilePath) : 0;
+    let decryptionConfig: { key: Buffer; iv: Buffer } | undefined = undefined;
 
     try {
+        if (isEncrypted && keyInfo.url && keyInfo.iv) {
+            const keyUrl = keyInfo.url;
+            const keyBuffer = keyCache.get(keyUrl)!;
+            decryptionConfig = { key: keyBuffer, iv: keyInfo.iv };
+        }
+
         const fetchOptions: ImpitOptions = { headers: { ...headers } };
         if (existingSize > 0) {
             logger.log(`分片 [${fileName}] 尝试断点续传： ${existingSize} `, { print: false });
@@ -164,7 +236,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0, bytesT
             logger.log(`分片 [${fileName}] 不支持断点续传`, { print: false });
         }
 
-        const downloadedBytes = await pipeStreamWithProgress(response.body, tmpFilePath, writeFlag);
+        const downloadedBytes = await pipeStreamWithProgress(response.body, tmpFilePath, writeFlag, decryptionConfig);
         bytesTrack += downloadedBytes;
 
         await fs.rename(tmpFilePath, filePath);

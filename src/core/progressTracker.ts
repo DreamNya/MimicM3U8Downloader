@@ -79,8 +79,8 @@ class ProgressTracker {
         const totalSizeStr = formatBytes(totalSize);
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
         const currentSpeedStr = `${formatBytes(this.#currentSpeed)}/s`;
-        const timeStr =
-            this.#currentSpeed > 0 ? ` @ ${formatTime((totalSize - this.#downloadedBytes) / this.#currentSpeed)}` : "";
+        const remainingBytes = Math.max(0, totalSize - this.#downloadedBytes);
+        const timeStr = this.#currentSpeed > 0 ? ` @ ${formatTime(remainingBytes / this.#currentSpeed)}` : "";
 
         logger.print(
             `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%) -- ${downloadedSizeStr}/${totalSizeStr} (${currentSpeedStr}${timeStr})`
