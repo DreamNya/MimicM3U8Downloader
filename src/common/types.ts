@@ -14,6 +14,8 @@ export interface DownloadOptions {
     browser: Browser;
     // 代理服务器地址 (Default: undefined)
     proxyUrl: string;
+    // 请求头（同时用于请求m3u8文件及分片） (Default: {})
+    headers: Record<string, string>;
     // 分片选择范围 (Default:'')
     range: string;
     // 分片迸发请求数 (Default: 16)
@@ -28,8 +30,6 @@ export interface DownloadOptions {
     noMerge: boolean;
     // 分片下载不完整时强制合并 (Default: false)
     forceMerge: boolean;
-    // 请求头（同时用于请求m3u8文件及分片） (Default: {})
-    headers: Record<string, string>;
     // 下载完毕后暂停交互窗口 (Default:true)
     pauseAfterDone: boolean;
     // 记录debug中间产物 (Default:false)

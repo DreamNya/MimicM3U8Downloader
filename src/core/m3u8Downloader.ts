@@ -46,7 +46,7 @@ export class M3U8Downloader {
             await this.#downloadAllSegments(segments);
             progressTracker.stop();
 
-            // 5. 合并完成
+            // 合并完成
             await this.#handleDownloadCompletion(mapInfo);
         } catch (err) {
             progressTracker.stop();
@@ -155,7 +155,7 @@ export class M3U8Downloader {
         const failedSet = progressTracker.get("failed");
         if (failedSet.size === 0) {
             if (!config.noMerge) {
-                logger.log("开始调用 ffmpeg 合并分片...\n", { log: false });
+                logger.log("开始调用 ffmpeg 合并分片...\n", { log: false, colorful: true });
                 await this.#mergeSegmentsWithFFmpeg(mapInfo);
             }
         } else {
@@ -300,7 +300,7 @@ export class M3U8Downloader {
 
         try {
             await mergeSegments(fileLines, config.outputFile);
-            logger.log(`🎉 视频封装合并成功: ${config.outputFile}`);
+            logger.log(`🎉 视频封装合并成功: ${config.outputFile}`, { colorful: true });
             if (config.enableDelAfterDone) {
                 await logger.close();
                 await fs.rm(config.tempDir, { recursive: true, force: true });

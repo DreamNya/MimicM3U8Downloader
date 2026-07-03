@@ -1,9 +1,10 @@
+import pkg from "#package.json" with { type: "json" };
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { waitBeforeExit } from "#src/common/utils.ts";
 import { M3U8Downloader } from "#src/core/m3u8Downloader.ts";
 
-console.log("MimicM3U8Downloader\n\n");
+console.log(`MimicM3U8Downloader v${pkg.version}\n\n`);
 
 process.on("unhandledRejection", (error) => {
     logger.error(`【全局捕获】未处理的 Promise 拒绝：${error}`, { print: false });
