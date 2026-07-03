@@ -3,6 +3,7 @@ import { logger } from "#src/common/logger.ts";
 
 export interface Segment {
     url: string;
+    index: number;
     duration: number;
     keyInfo?: {
         method: "AES-128";
@@ -205,6 +206,7 @@ export class M3u8Parser {
                     segments.push({
                         url: this.#resolveUrl(line, baseUrl),
                         duration: currentDuration,
+                        index: mediaSequence,
                         keyInfo: segmentKeyInfo,
                     });
 

@@ -8,6 +8,7 @@ import { parseArgs } from "node:util";
 const defaultConfig: DownloadOptions = {
     browser: "chrome",
     proxyUrl: "",
+    range: "",
     concurrency: 16,
     maxRetries: 3,
     timeout: 60000,

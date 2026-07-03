@@ -239,6 +239,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0, bytesT
         const downloadedBytes = await pipeStreamWithProgress(response.body, tmpFilePath, writeFlag, decryptionConfig);
         bytesTrack += downloadedBytes;
 
+        // 如果重命名后的路径已存在，则默认覆盖
         await fs.rename(tmpFilePath, filePath);
         result.ok = true;
         return result;

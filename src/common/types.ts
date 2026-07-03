@@ -14,6 +14,8 @@ export interface DownloadOptions {
     browser: Browser;
     // 代理服务器地址 (Default: undefined)
     proxyUrl: string;
+    // 分片选择范围 (Default:'')
+    range: string;
     // 分片迸发请求数 (Default: 16)
     concurrency: number;
     // 网络请求失败时自动重试次数（403 404时不会重试） (Default: 3)

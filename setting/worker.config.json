@@ -1,6 +1,7 @@
 {
     "browser": "chrome",
     "proxyUrl": "",
+    "range": "",
     "concurrency": 16,
     "maxRetries": 3,
     "timeout": 60000,
@@ -8,5 +9,6 @@
     "noMerge": false,
     "forceMerge": false,
     "headers": {},
-    "pauseAfterDone": true
+    "pauseAfterDone": true,
+    "debug": false
 }
