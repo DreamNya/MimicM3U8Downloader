@@ -6,12 +6,13 @@
     "scripts": {
         "server": "node src/bin/server.ts",
         "registerUrlProtocol": "node src/bin/protocol.ts --register",
-        "unregisterUrlProtocol": "node src/bin/protocol.ts --unregister"
+        "unregisterUrlProtocol": "node src/bin/protocol.ts --unregister",
+        "build": "bun build ./src/build/main.ts --compile --production --minify --outfile dist/MimicM3U8Downloader"
     },
     "author": "DreamNya",
     "license": "MIT",
     "imports": {
-        "#*": "./*",
+        "#package": "./package.json",
         "#src/*": "./src/*",
         "#setting/*": "./setting/*"
     },
