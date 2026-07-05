@@ -5,6 +5,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
+function getSettingPath(fileName: string): string {
+    const exeName = path.basename(process.execPath).toLowerCase();
+    // 无论是 Node.js SEA 还是 Bun Compile，编译成单文件后，可执行文件名都不会是 node 或 bun
+    const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
+    if (isCompiled) {
+        return path.join(path.dirname(process.execPath), "setting", fileName);
+    } else {
+        return fileURLToPath(import.meta.resolve(`#setting/${fileName}`));
+    }
+}
+
 const defaultConfig: DownloadOptions = {
     browser: "chrome",
     proxyUrl: "",
@@ -40,9 +51,8 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     });
 
     // 读取全局配置
-    const globalConfig: Partial<DownloadOptions> = JSON.parse(
-        await fs.readFile(fileURLToPath(import.meta.resolve("#setting/worker.config.json")), "utf-8").catch(() => "{}")
-    );
+    const globalConfigPath = getSettingPath("worker.config.json");
+    const globalConfig: Partial<DownloadOptions> = JSON.parse(await fs.readFile(globalConfigPath, "utf-8").catch(() => "{}"));
 
     const userConfig: UserPayload = parseUserConfig(values, defaultConfig);
 

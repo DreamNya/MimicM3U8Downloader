@@ -2,9 +2,15 @@ import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-const serverPath = fileURLToPath(import.meta.resolve("#src/bin/worker.ts"));
+const exeName = path.basename(process.execPath).toLowerCase();
+const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
+
+function getServerPath() {
+    return fileURLToPath(import.meta.resolve("#src/bin/worker.ts"));
+}
+
 const nodePath = process.execPath;
-const rawCommandValue = `"${nodePath}" "${serverPath}" --arg "%1"`;
+const rawCommandValue = isCompiled ? `"${nodePath}" --arg "%1"` : `"${nodePath}" "${getServerPath()}" --arg "%1"`;
 
 // 注册表根路径 （HKCU无需管理员权限）
 const REG_KEY = "HKEY_CURRENT_USER\\Software\\Classes\\m3u8mimic";
@@ -36,22 +42,25 @@ function unregisterProtocol(): void {
     }
 }
 
-// 3. 使用 parseArgs 解析命令行参数
-const { values } = parseArgs({
-    options: {
-        register: {
-            type: "boolean",
+export function runProtocol(): void {
+    // 使用 parseArgs 解析命令行参数
+    const { values } = parseArgs({
+        options: {
+            register: {
+                type: "boolean",
+            },
+            unregister: {
+                type: "boolean",
+            },
         },
-        unregister: {
-            type: "boolean",
-        },
-    },
-});
+        strict: false,
+    });
 
-if (values.register === true) {
-    registerProtocol();
-} else if (values.unregister === true) {
-    unregisterProtocol();
-} else {
-    process.exit(1);
+    if (values.register === true) {
+        registerProtocol();
+    } else if (values.unregister === true) {
+        unregisterProtocol();
+    } else {
+        process.exit(1);
+    }
 }
