@@ -4,6 +4,8 @@
 
 本项目基于 `impit` 库，能够**完美模拟真实浏览器的 TLS 指纹**，绕过人机验证，实现稳定、高速的m3u8分片下载与自动合并
 
+GitHub: <https://github.com/DreamNya/MimicM3U8Downloader>
+
 ---
 
 ## ✨ 项目特性
@@ -18,8 +20,8 @@
 * **三模一体化运行**
 
   1. **CLI 模式**：直接通过 Node.js 调用下载器
-  2. **HTTP 本地服务**：通过本地服务器 http 请求，一键唤醒下载器
-  3. **URL Protocol 协议**：支持浏览器或外部网页通过URL Protocol 协议唤醒下载器
+  2. **URL Protocol 协议**：支持浏览器或外部网页通过URL Protocol 协议唤醒下载器
+  3. **HTTP 本地服务**：通过本地服务器 http 请求，一键唤醒下载器
 
 ### 预览
 
@@ -27,22 +29,16 @@
 
 ---
 
-## 🛠️ 前置准备
+## 📦 安装
 
-1. **Node.js**
+本项目有2种安装/使用方式可选，可根据自己实际情况选择
 
-   安装 **Node.js v23.6.0 或更高版本**  (推荐: Node.js v24+ / latest LTS)
-   （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
+* Node.js模式需要在本地环境中安装Node.js，但可直接运行模块
+* 编译模式无需安装Node.js，但编译文件解压后文件体积较大
 
-2. **FFmpeg**
+### Node.js模式
 
-   请确保已经安装 FFmpeg，并正确配置**环境变量**
-
----
-
-## 📦 安装与配置
-
-### 1. 克隆项目
+克隆项目
 
 ```bash
 git clone https://github.com/DreamNya/MimicM3U8Downloader.git
@@ -50,13 +46,37 @@ cd MimicM3U8Downloader
 npm install
 ```
 
+### 编译模式
+
+下载编译后的文件
+
+```text
+https://github.com/DreamNya/MimicM3U8Downloader/releases
+```
+
 ---
 
-## 2. 配置文件说明
+## 🛠️ 前置准备
 
-项目包含两个全局配置文件，位于 `setting/` 目录。
+### Node.js
 
-### 📂 setting/server.config.json
+> 编译模式可跳过
+
+安装 **Node.js v23.6.0 或更高版本**  (推荐: Node.js v24+ / latest LTS)
+（低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
+
+### FFmpeg
+
+无论是Node.js模式还是编译模式均需安装FFmpeg
+请确保本地环境中已经安装 FFmpeg，且正确配置**环境变量**
+
+---
+
+## 配置文件说明
+
+项目包含两个全局配置文件，位于 `config/` 目录。
+
+### 📂 config/server.setting.json
 
 本地 http 服务器配置参数
 
@@ -66,7 +86,7 @@ npm install
 
 ---
 
-### 📂 setting/worker.config.json
+### 📂 config/worker.setting.json
 
 下载器全局配置参数
 
@@ -122,7 +142,7 @@ npm install
 同一配置项存在多个来源时，按以下优先级覆盖（高 → 低）：
 
 1. `Payload` 传递的参数
-2. `worker.config.json` 中配置的全局静态参数
+2. `worker.setting.json` 中配置的全局静态参数
 3. 下载器默认兜底参数
 
 ## 🚀 使用方法
@@ -158,23 +178,106 @@ function BTOA(str: string): string {
 
 ---
 
-### 模式一：HTTP 本地服务
+### 模式一：CLI 命令行
 
-适合作为浏览器脚本或其他应用调用。
+直接在CLI中通过`--`传递参数  
+*--headers必须为标准JSON*
 
-启动服务：
+* **Node.js模式**
 
 ```bash
-npm run server
+node src/bin/worker.ts --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\"}'
 ```
 
-默认监听：
+* **编译模式**
+
+```bash
+MimicM3U8Downloader --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\"}'
+```
+
+---
+
+### 模式二：URL Protocol 唤醒
+
+注册 Windows URL Protocol 后，可以直接在浏览器或其他程序中访问`m3u8mimic://`协议链接启动下载器
+
+#### 调用方式
+
+在浏览器或本地直接打开协议链接即可
+
+```text
+m3u8mimic://<Base64(JSON Payload)>
+```
+
+例如：
+
+```text
+m3u8mimic://eyJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tL3RhcmdldC5tM3U4Iiwic2F2ZU5hbWUiOiLop4bpopHkv53lrZjlkI3np7AiLCJ3b3JrRGlyIjoiRDovbTN1OCIsImhlYWRlcnMiOnsiUmVmZXJlciI6Imh0dHBzOi8vZXhhbXBsZS5jb20ifX0=
+```
+
+#### 注册/更新/卸载协议
+
+> 仅需注册一次、无需管理员权限、模块会自动配置调用路径
+
+* **Node.js模式**
+
+注册/更新协议
+
+```bash
+npm run registerUrlProtocol
+```
+
+卸载协议：
+
+```bash
+npm run unregisterUrlProtocol
+```
+
+* **编译模式**
+
+注册/更新协议
+
+```bash
+MimicM3U8Downloader --register
+```
+
+卸载协议：
+
+```bash
+MimicM3U8Downloader --unregister
+```
+
+---
+
+### 模式三：HTTP 本地服务
+
+适合作为浏览器脚本或其他应用调用
+
+> http本地监听模块与下载模块进程间互相独立，一方关闭不会影响另一方
+
+默认监听（监听端口可通过`config/server.setting.json`修改）
 
 ```text
 http://127.0.0.1:12345
 ```
 
-* **请求示例（UserScript）**
+#### 启动服务
+
+* **Node.js模式**
+
+```bash
+npm run server
+```
+
+* **编译模式**
+
+> 不要传递任何 -- 参数，否则视为CLI命令行模式直接调用下载模块（windows系统中直接双击运行即可）
+
+```bash
+MimicM3U8Downloader
+```
+
+#### 请求示例（UserScript）
 
 ```javascript
 GM_xmlhttpRequest({
@@ -195,65 +298,44 @@ GM_xmlhttpRequest({
 });
 ```
 
-服务端会自动：
-
-1. 将 Payload 编码为 Base64。
-2. 拉起新的 CMD 窗口。
-3. 启动独立下载任务。
-
----
-
-### 模式二：URL Protocol 浏览器唤醒
-
-注册 Windows URL Protocol 后，可以直接通过对应协议启动下载器，无需使用本地服务器
-
-* **注册/更新协议（仅需一次）**
-
-无需管理员权限，自动检测Node.js路径及下载器路径
+#### 请求示例（curl）
 
 ```bash
-npm run registerUrlProtocol
-```
-
-调用方式
-在浏览器或本地直接打开协议链接即可
-
-```text
-m3u8mimic://<Base64(JSON Payload)>
-```
-
-例如：
-
-```text
-m3u8mimic://eyJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tL3RhcmdldC5tM3U4Iiwic2F2ZU5hbWUiOiLop4bpopHkv53lrZjlkI3np7AiLCJ3b3JrRGlyIjoiRDovbTN1OCIsImhlYWRlcnMiOnsiUmVmZXJlciI6Imh0dHBzOi8vZXhhbXBsZS5jb20ifX0=
-```
-
-卸载协议：
-
-```bash
-npm run unregisterUrlProtocol
+curl -X POST "http://127.0.0.1:12345" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/target.m3u8",
+    "saveName": "视频保存名称",
+    "workDir": "D:/m3u8",
+    "headers": {
+      "Referer": "https://example.com"
+    }
+  }'
 ```
 
 ---
 
-### 模式三：CLI 命令行
-
-直接在CLI中通过`--`传递参数
-(--headers必须为标准JSON)
-
-```bash
-node src/bin/worker.ts --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\"}'
-```
-
----
-
-## 后记
+## 开发
 
 本项目在部分设计方面参考了`N_m3u8DL-CLI`项目
+
+### SEA单文件编译
+
+本项目依赖TypeScript / ESM架构 / C++编译库，开发环境采用 Node.js，仅 SEA 编译环境使用 Bun
+
+SEA编译方法
+(`build.ts`编译方法仅供参考)
+
+```bash
+npm run packImpit
+bun run build
+```
 
 ### TODO
 
 * [ ] SAMPLE-AES解密 （不含DRM）
+* [ ] 流式内存合并模式 （无需写入本地缓存，减少I/O读写）
+* [ ] GitHub CI/CD
 * [ ] 解析本地m3u8
 * [ ] 前端GUI
 

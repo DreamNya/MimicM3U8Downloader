@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -43,6 +44,10 @@ function unregisterProtocol(): void {
 }
 
 export function runProtocol(): void {
+    if (process.platform !== "win32") {
+        console.log("URL Protocol仅支持windows平台");
+        process.exit(1);
+    }
     // 使用 parseArgs 解析命令行参数
     const { values } = parseArgs({
         options: {
