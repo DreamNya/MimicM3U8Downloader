@@ -10,9 +10,9 @@ function getSettingPath(fileName: string): string {
     // 无论是 Node.js SEA 还是 Bun Compile，编译成单文件后，可执行文件名都不会是 node 或 bun
     const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
     if (isCompiled) {
-        return path.join(path.dirname(process.execPath), "setting", fileName);
+        return path.join(path.dirname(process.execPath), "config", fileName);
     } else {
-        return fileURLToPath(import.meta.resolve(`#setting/${fileName}`));
+        return fileURLToPath(import.meta.resolve(`#config/${fileName}`));
     }
 }
 
@@ -51,7 +51,7 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     });
 
     // 读取全局配置
-    const globalConfigPath = getSettingPath("worker.config.json");
+    const globalConfigPath = getSettingPath("worker.setting.json");
     const globalConfig: Partial<DownloadOptions> = JSON.parse(await fs.readFile(globalConfigPath, "utf-8").catch(() => "{}"));
 
     const userConfig: UserPayload = parseUserConfig(values, defaultConfig);

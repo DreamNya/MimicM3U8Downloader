@@ -11,9 +11,9 @@ function getSettingPath(fileName: string): string {
     // 无论是 Node.js SEA 还是 Bun Compile，编译成单文件后，可执行文件名都不会是 node 或 bun
     const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
     if (isCompiled) {
-        return path.join(path.dirname(process.execPath), "setting", fileName);
+        return path.join(path.dirname(process.execPath), "config", fileName);
     } else {
-        return fileURLToPath(import.meta.resolve(`#setting/${fileName}`));
+        return fileURLToPath(import.meta.resolve(`#config/${fileName}`));
     }
 }
 
@@ -21,26 +21,32 @@ function getWorkerPath(): string {
     return fileURLToPath(import.meta.resolve(`#src/bin/worker.ts`));
 }
 
-export async function runServer() {
-    const configPath = getSettingPath("server.config.json");
-    // JSON解析失败则立即抛出错误终止运行
-    const { Port = 12345 } = JSON.parse(await fs.readFile(configPath, "utf-8").catch(() => "{}"));
+function getRequestBody(req: http.IncomingMessage): Promise<Buffer> {
+    return new Promise<Buffer>((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => resolve(Buffer.concat(chunks)));
+        req.on("error", (err) => reject(err)); // 传输层出错也能捕获
+    });
+}
 
-    http.createServer(async (req, res) => {
-        try {
-            if (req.method == "POST") {
-                const data: Buffer[] = [];
-                req.on("data", (chuck: Buffer) => data.push(chuck));
-                req.on("end", async () => {
-                    const json = JSON.parse(Buffer.concat(data).toString());
+export async function runServer(): Promise<void> {
+    const settingPath = getSettingPath("server.setting.json");
+    // JSON解析失败则立即抛出错误终止运行
+    const { Port = 12345 } = JSON.parse(await fs.readFile(settingPath, "utf-8").catch(() => "{}"));
+    return new Promise<void>((resolve, reject) => {
+        const server = http.createServer(async (req, res) => {
+            try {
+                if (req.method == "POST") {
+                    const rawBody = await getRequestBody(req);
+                    const json = JSON.parse(rawBody.toString());
                     const arg = "m3u8mimic://" + BTOA(JSON.stringify(json));
                     console.log("收到请求", json);
                     const exeName = path.basename(process.execPath).toLowerCase();
                     const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
                     const cmdArgs = isCompiled
-                        ? ["/c", "start", "cmd", "/k", `"${process.execPath}"`, "--arg", `"${arg}"`]
-                        : ["/c", "start", "cmd", "/k", "node", `"${getWorkerPath()}"`, "--arg", `"${arg}"`];
-
+                        ? ["/c", "start", "cmd", "/c", `""${process.execPath}"`, "--arg", `"${arg}""`]
+                        : ["/c", "start", "cmd", "/c", "node", `"${getWorkerPath()}"`, "--arg", `"${arg}"`];
                     const child = spawn("cmd.exe", cmdArgs, {
                         detached: true,
                         stdio: "ignore",
@@ -51,19 +57,25 @@ export async function runServer() {
                     child.unref();
                     res.writeHead(200, { "Content-Type": "text/plain" });
                     res.end("ok");
-                });
-            } else {
-                res.writeHead(200, { "Content-Type": "text/plain" });
-                res.end("Not Found");
+                } else {
+                    res.writeHead(200, { "Content-Type": "text/plain" });
+                    res.end("Not Found");
+                }
+            } catch (err) {
+                console.error(err);
+                res.writeHead(400, { "Content-Type": "text/plain" });
+                res.end(getErrorMessage(err));
             }
-        } catch (err) {
-            console.error(err);
-            res.writeHead(400, { "Content-Type": "text/plain" });
-            res.end(getErrorMessage(err));
-        }
-    }).listen(Port, "127.0.0.1", () => {
-        console.log(
-            `\n⚡ MimicM3U8Downloader 本地监听服务已就绪\n- 运行环境: 127.0.0.1\n- 监听端口: ${Port}\n=========================================`
-        );
+        });
+
+        server.listen(Port, "127.0.0.1", () => {
+            console.log(
+                `\n⚡ MimicM3U8Downloader 本地监听服务已就绪\n- 运行环境: 127.0.0.1\n- 监听端口: ${Port}\n=========================================`
+            );
+            resolve();
+        });
+        server.on("error", (err) => {
+            reject(err);
+        });
     });
 }
