@@ -6,9 +6,10 @@
     "concurrency": 16,
     "maxRetries": 3,
     "timeout": 60000,
-    "enableDelAfterDone": false,
+    "streamMerge": false,
     "noMerge": false,
     "forceMerge": false,
+    "enableDelAfterDone": false,
     "pauseAfterDone": true,
     "debug": false
 }

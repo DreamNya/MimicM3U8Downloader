@@ -14,8 +14,9 @@ GitHub: <https://github.com/DreamNya/MimicM3U8Downloader>
 * **多级 M3U8 嵌套解析**：支持 Master Playlist 递归解析，自动提取 BaseURL 并精准锁定最高清晰度视频流
 * **动态 AES 解密**：流式解密标准 AES-128 加密分片，支持多密钥自动识别与平滑切换
 * **精准区间下载**： 支持解析并下载指定范围（Range）的分片，满足按需下载需求
-* **流式断点续传**：集成分片完整性校验机制，支持中断进度秒传，大幅减少重复 I/O 损耗
+* **流式断点续传**：集成分片完整性校验机制，支持中断进度秒传，大幅减少重复磁盘 I/O 损耗
 * **多线程高效并发**：采用多线程异步并发请求，最大化利用网络带宽，提升下载吞吐量
+* **高性能流式合并**：支持分片内存暂存并实时写入 FFmpeg 管道，跳过中间产物损耗，降低约 50% 磁盘 I/O 开销，有效提升合并效率并延长 SSD 使用寿命。
 * **FFmpeg 自动封装**：分片下载完成后自动调用 FFmpeg，实现无损、快速的合并与封装
 * **三模一体化运行**
 
@@ -63,6 +64,7 @@ https://github.com/DreamNya/MimicM3U8Downloader/releases
 > 编译模式可跳过
 
 安装 **Node.js v23.6.0 或更高版本**  (推荐: Node.js v24+ / latest LTS)
+
 （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
 
 ### FFmpeg
@@ -72,11 +74,13 @@ https://github.com/DreamNya/MimicM3U8Downloader/releases
 
 ---
 
-## 配置文件说明
+## 📝 配置文件说明
 
 项目包含两个全局配置文件，位于 `config/` 目录。
 
 ### 📂 config/server.setting.json
+
+> 请将 `[example]config/server.setting.json` 复制为 `config/server.setting.json` 以正确生效用户配置
 
 本地 http 服务器配置参数
 
@@ -87,6 +91,8 @@ https://github.com/DreamNya/MimicM3U8Downloader/releases
 ---
 
 ### 📂 config/worker.setting.json
+
+> 请将 `[example]config/worker.setting.json` 复制为 `config/worker.setting.json` 以正确生效用户配置
 
 下载器全局配置参数
 
@@ -99,9 +105,10 @@ https://github.com/DreamNya/MimicM3U8Downloader/releases
 | `concurrency`        | number  | `16`       | 分片迸发请求数
 | `maxRetries`         | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
 | `timeout`            | number  | `60000`    | 网络请求的超时毫秒（包含请求及连接时间，如果分片过大建议提高超时时间）
-| `enableDelAfterDone` | boolean | `false`    | 下载完毕后删除临时文件夹
+| `streamMerge`        | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） 详见[下载模式对比](#下载模式对比)
 | `noMerge`            | boolean | `false`    | 分片下载完毕不自动合并
 | `forceMerge`         | boolean | `false`    | 下分片下载不完整时强制合并
+| `enableDelAfterDone` | boolean | `false`    | 下载完毕后删除临时文件夹
 | `pauseAfterDone`     | boolean | `true`     | 下载完毕后暂停交互窗口
 | `debug`              | boolean | `false`    | 记录debug中间产物
 
@@ -119,7 +126,18 @@ https://github.com/DreamNya/MimicM3U8Downloader/releases
 
 其余非必须传递参数与下载器全局配置参数规则相同，如果传递则在该次调用中覆盖全局配置中对应的配置
 
-### 配置附录
+### 📎 配置附录
+
+#### 下载模式对比
+
+| 模式对比 | 模式一：缓存后再合并 | 模式二：流式实时合并
+| -------- | ---------------------- | ----------------------
+| **配置项** | `streamMerge: false` （默认值） | `streamMerge: true`
+| **工作原理** | 流式下载分片 ➔ **流式写入硬盘缓存** ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并 ➔ **写入最终视频** | 流式下载分片 ➔ **暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式写入最终视频**
+| **磁盘写入量** | **2 倍** 视频大小 | **1 倍** 视频大小
+| **断点续传** | 🌟 **支持**，所有分片均会缓存到本地 | ❌ **不支持**，任意分片超出最大重试次数则全部报废
+| **网络要求** | **普通** | **非常高**，如果反复失败建议放宽下载配置或更换模式
+| **内存占用** | 无额外占用 | 最多额外占用 `[迸发数 * 分片平均大小]` 内存
 
 #### range设置格式
 
@@ -315,7 +333,7 @@ curl -X POST "http://127.0.0.1:12345" \
 
 ---
 
-## 开发
+## 💻 开发
 
 本项目在部分设计方面参考了`N_m3u8DL-CLI`项目
 
@@ -334,7 +352,6 @@ bun run build
 ### TODO
 
 * [ ] SAMPLE-AES解密 （不含DRM）
-* [ ] 流式内存合并模式 （无需写入本地缓存，减少I/O读写）
 * [ ] GitHub CI/CD
 * [ ] 解析本地m3u8
 * [ ] 前端GUI

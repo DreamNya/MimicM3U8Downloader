@@ -4,7 +4,7 @@ import { formatBytes, formatTime } from "#src/common/utils.ts";
 type RecordType = "success" | "failed" | "cache";
 
 class ProgressTracker {
-    #totalCount!: number;
+    #totalCount?: number;
     #downloadedBytes = 0;
     #lastBytes = 0;
     #currentSpeed = 0;
@@ -67,6 +67,9 @@ class ProgressTracker {
     }
 
     print(): void {
+        if (!this.#totalCount) {
+            return;
+        }
         const completedCount = this.size("success");
         if (completedCount === 0) {
             return;

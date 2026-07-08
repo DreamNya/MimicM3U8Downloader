@@ -24,9 +24,10 @@ const defaultConfig: DownloadOptions = {
     concurrency: 16,
     maxRetries: 3,
     timeout: 60000,
-    enableDelAfterDone: false,
+    streamMerge: false,
     noMerge: false,
     forceMerge: false,
+    enableDelAfterDone: false,
     pauseAfterDone: true,
     debug: false,
 };
@@ -52,7 +53,12 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
 
     // 读取全局配置
     const globalConfigPath = getSettingPath("worker.setting.json");
-    const globalConfig: Partial<DownloadOptions> = JSON.parse(await fs.readFile(globalConfigPath, "utf-8").catch(() => "{}"));
+    const globalConfig: Partial<DownloadOptions> = JSON.parse(
+        await fs.readFile(globalConfigPath, "utf-8").catch(() => {
+            console.log("⚠️ 未读取到 config/worker.setting.json 将使用 Payload 或默认设置");
+            return "{}";
+        })
+    );
 
     const userConfig: UserPayload = parseUserConfig(values, defaultConfig);
 

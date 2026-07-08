@@ -1,16 +1,27 @@
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { formatTime, getErrorMessage } from "#src/common/utils.ts";
-import { mergeSegments, parseSegmentInfo } from "#src/core/ffmpeg.ts";
+import { formatFFmpegPath, mergeSegments, parseSegmentInfo, startStreamMerge } from "#src/core/ffmpeg.ts";
 import { M3u8Parser, type ParsedM3u8, type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
-import { downloadSegment, preflightKeys } from "#src/core/segmentDownloader.ts";
+import { preflightKeys } from "#src/core/segment/crypto.ts";
+import { downloadSegment } from "#src/core/segment/downloader.ts";
+import { filterSegmentsByRange } from "#src/core/segment/filter.ts";
+import { pipeSegmentsToStream } from "#src/core/segment/pipeline.ts";
+import { formatFileInfo, initResumableDownload } from "#src/core/segment/storage.ts";
 import type { ImpitOptions } from "impit";
 import fs from "node:fs/promises";
 import path from "node:path";
 import pLimit from "p-limit";
 
 export class M3U8Downloader {
+    #mapFileName = "!MAP.ts";
+    #mapPath: string;
+    #initFilePath: string | null = null;
+
+    constructor() {
+        this.#mapPath = path.join(config.tempDir, this.#mapFileName);
+    }
     async start(): Promise<void> {
         try {
             logger.log(`文件名称：${config.saveName}`);
@@ -25,7 +36,7 @@ export class M3U8Downloader {
                 rawMasterContent,
                 rawMediaContent,
             } = await parser.parse();
-            const segments: Segment[] = this.#filterSegmentsByRange(config.range, rawSegments);
+            const segments: Segment[] = filterSegmentsByRange(config.range, rawSegments);
             const totalDuration: number = segments.reduce((duration, segment) => duration + segment.duration, 0);
             this.logFiles(segments, rawMasterContent, rawMediaContent);
 
@@ -34,20 +45,26 @@ export class M3U8Downloader {
 
             // 预检密钥
             await preflightKeys(segments);
-            // 初始化断点续传 如果指定了分片范围则强制全量下载
-            const isResumable = config.range ? false : await this.#initResumableDownload();
+            // 初始化断点续传 如果开启了流式合并或指定了分片范围则强制全量下载
+            const isResumable = config.streamMerge || config.range ? false : await initResumableDownload();
 
             // 处理 MAP 文件的下载与信息读取
             await this.#handleMapAndInfo(mapInfo, isResumable, segments);
 
-            // 并发下载切片
-            const indexOffset = isResumable ? 0 : mapInfo ? 0 : 1;
-            progressTracker.start(segments.length + indexOffset);
-            await this.#downloadAllSegments(segments);
-            progressTracker.stop();
+            if (config.streamMerge) {
+                // 流式合并 暂不支持progressTracker
+                await this.#streamMergeWithFFmpeg(segments);
+            } else {
+                // 缓存合并
+                const indexOffset = isResumable ? 0 : mapInfo ? 0 : 1;
+                progressTracker.start(segments.length + indexOffset);
+                // 并发下载并缓存分片
+                await this.#downloadAllSegments(segments);
+                progressTracker.stop();
 
-            // 合并完成
-            await this.#handleDownloadCompletion(mapInfo);
+                // 合并缓存的分片
+                await this.#handleDownloadCompletion(mapInfo);
+            }
         } catch (err) {
             progressTracker.stop();
             logger.error(`\n💥 运行中断: ${getErrorMessage(err)}`);
@@ -62,9 +79,7 @@ export class M3U8Downloader {
             return;
         }
 
-        const mapFileName = "!MAP.ts";
-        const mapPath = path.join(config.tempDir, mapFileName);
-        const { fileName: firstSegmentName, filePath: firstSegmentPath } = this.#formatFileInfo(segments[0].index, config.tsDir);
+        const { fileName: firstSegmentName, filePath: firstSegmentPath } = formatFileInfo(segments[0].index, config.tsDir);
 
         // 如果包含 MAP 则以 MAP为首分片读取视频信息
         if (mapInfo) {
@@ -76,14 +91,16 @@ export class M3U8Downloader {
             }
             const result = await downloadSegment({
                 url: mapInfo.url,
-                filePath: mapPath,
-                fileName: mapFileName,
+                filePath: this.#mapPath,
+                fileName: this.#mapFileName,
                 headers,
+                maxRetries: config.maxRetries,
                 keyInfo: mapInfo.keyInfo,
             });
             if (!result.ok) {
-                throw new Error("首分片下载失败");
+                throw new Error("MAP 文件下载失败");
             }
+            this.#initFilePath = this.#mapPath;
         }
         // 不包含 MAP，下载首分片用以读取视频信息
         else {
@@ -94,6 +111,7 @@ export class M3U8Downloader {
                     url: firstSegment.url,
                     filePath: firstSegmentPath,
                     fileName: firstSegmentName,
+                    maxRetries: config.maxRetries,
                     keyInfo: firstSegment.keyInfo,
                 });
                 if (result.ok) {
@@ -101,10 +119,11 @@ export class M3U8Downloader {
                 } else {
                     throw new Error("首分片下载失败");
                 }
+                this.#initFilePath = firstSegmentPath;
             }
         }
 
-        const segmentPath = mapInfo ? mapPath : firstSegmentPath;
+        const segmentPath = mapInfo ? this.#mapPath : firstSegmentPath;
         const segmentInfo = await parseSegmentInfo(segmentPath);
         logger.log(`读取文件信息...\n${segmentInfo}`, { colorful: true });
         if (!segmentInfo) {
@@ -117,7 +136,7 @@ export class M3U8Downloader {
         const limit = pLimit(config.concurrency);
 
         const downloadTasks = segments.map(({ url, keyInfo, index }) => {
-            const { fileName, filePath } = this.#formatFileInfo(index, config.tsDir);
+            const { fileName, filePath } = formatFileInfo(index, config.tsDir);
 
             return limit(async () => {
                 if (progressTracker.has("success", fileName)) {
@@ -142,12 +161,6 @@ export class M3U8Downloader {
         await Promise.all(downloadTasks);
     }
 
-    #formatFileInfo(index: number, dir: string): { fileName: string; filePath: string } {
-        const fileName = `${String(index).padStart(6, "0")}.ts`;
-        const filePath = path.join(dir, fileName);
-        return { fileName, filePath };
-    }
-
     async #handleDownloadCompletion(mapInfo: ParsedM3u8["mapInfo"]): Promise<void> {
         const completedCount = progressTracker.size("success");
 
@@ -168,130 +181,14 @@ export class M3U8Downloader {
         }
     }
 
-    async #initResumableDownload(): Promise<boolean> {
-        const files = await fs.readdir(config.tsDir);
-        await Promise.all(
-            files.map(async (file) => {
-                const filePath = path.join(config.tsDir, file);
-                if (file.endsWith(".ts")) {
-                    progressTracker.add("success", file);
-                    const { size } = await fs.stat(filePath);
-                    progressTracker.recordChunk(size);
-                } else if (file.endsWith(".tmp")) {
-                    progressTracker.add("cache", file);
-                }
-            })
-        );
-
-        const count = progressTracker.size("success");
-        if (count > 0) {
-            logger.log(`➔ 断点续传分片：${count}`);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * 根据配置的 range 规则过滤分片列表
-     */
-    #filterSegmentsByRange(rangeStr: string, segments: Segment[]): Segment[] {
-        if (!rangeStr) {
-            return segments;
-        }
-        const isTimeRange = rangeStr.includes(":");
-
-        // 1. 时间轴格式解析 (如 "00:00:28-00:10:00")
-        if (isTimeRange) {
-            const timeToSeconds = (timeStr: string): number => {
-                const parts = timeStr.split(":").map(Number);
-                if (parts.length !== 3 || parts.some(isNaN)) {
-                    throw new Error(`不合法的时间格式: "${timeStr}"，期待格式为 "HH:MM:SS"`);
-                }
-                return parts[0] * 3600 + parts[1] * 60 + parts[2];
-            };
-
-            const parts = rangeStr.split(",");
-            const timeRanges: { start: number; end: number }[] = [];
-
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (!trimmed) {
-                    continue;
-                }
-
-                if (trimmed.includes("-")) {
-                    const [startStr, endStr] = trimmed.split("-");
-                    const start = startStr && startStr.trim() ? timeToSeconds(startStr.trim()) : 0;
-                    const end = endStr && endStr.trim() ? timeToSeconds(endStr.trim()) : Infinity;
-                    timeRanges.push({ start, end });
-                } else {
-                    const time = timeToSeconds(trimmed);
-                    timeRanges.push({ start: time, end: time });
-                }
-            }
-
-            let currentRefTime = 0;
-            const filtered: Segment[] = [];
-
-            for (const seg of segments) {
-                const startTime = currentRefTime;
-                const endTime = currentRefTime + seg.duration;
-                currentRefTime = endTime; // 递增时间指针
-
-                const matches = timeRanges.some((range) => {
-                    if (range.start === range.end) {
-                        return startTime <= range.start && range.start < endTime;
-                    }
-                    // 分片起点小于范围终点 且 分片终点大于范围起点
-                    return startTime < range.end && endTime > range.start;
-                });
-
-                if (matches) {
-                    filtered.push(seg);
-                }
-            }
-
-            return filtered;
-        }
-        // 精确分片索引格式解析 (如 "110,120-130")
-        else {
-            const parts = rangeStr.split(",");
-            const exactIndices = new Set<number>();
-            const indexRanges: { start: number; end: number }[] = [];
-
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (!trimmed) {
-                    continue;
-                }
-
-                if (trimmed.includes("-")) {
-                    const [startStr, endStr] = trimmed.split("-");
-                    const start = startStr && startStr.trim() ? parseInt(startStr.trim(), 10) : 0;
-                    const end = endStr && endStr.trim() ? parseInt(endStr.trim(), 10) : Infinity;
-                    indexRanges.push({ start, end });
-                } else {
-                    exactIndices.add(parseInt(trimmed, 10));
-                }
-            }
-
-            return segments.filter((seg) => {
-                if (exactIndices.has(seg.index)) {
-                    return true;
-                }
-                return indexRanges.some((range) => seg.index >= range.start && seg.index <= range.end);
-            });
-        }
-    }
-
     async #mergeSegmentsWithFFmpeg(mapInfo: ParsedM3u8["mapInfo"]): Promise<void> {
         const downloadedSet = progressTracker.get("success");
         const fileLines: string[] = [...downloadedSet]
             .sort()
-            .map((fileName) => `${path.resolve(config.tsDir, fileName).replace(/\\/g, "/")}`);
+            .map((fileName) => `${formatFFmpegPath(path.resolve(config.tsDir, fileName))}`);
 
         if (mapInfo) {
-            fileLines.unshift(`${path.resolve(config.tempDir, "!MAP.ts").replace(/\\/g, "/")}`);
+            fileLines.unshift(`${formatFFmpegPath(this.#mapPath)}`);
         }
 
         if (config.debug) {
@@ -308,6 +205,52 @@ export class M3U8Downloader {
             }
         } catch (err) {
             logger.error(`FFmpeg 合并失败: ${getErrorMessage(err)}`);
+        }
+    }
+
+    async #streamMergeWithFFmpeg(segments: Segment[]): Promise<void> {
+        logger.log("已启用流式合并模式...\n", { colorful: true });
+
+        if (!this.#initFilePath) {
+            throw new Error("未成功加载首分片或 MAP 文件");
+        }
+
+        const tmpStreamPath = formatFFmpegPath(path.join(config.tempDir, "stream.tmp.mp4"));
+        const { stdin, processExitPromise } = startStreamMerge(tmpStreamPath);
+
+        try {
+            const initialBuffers: Buffer[] = [];
+            if (this.#initFilePath) {
+                const initFileBuffer = await fs.readFile(this.#initFilePath);
+                initialBuffers.push(initFileBuffer);
+            }
+
+            await pipeSegmentsToStream({
+                segments,
+                targetStream: stdin,
+                concurrency: config.concurrency,
+                maxRetries: config.maxRetries,
+                initialBuffers,
+            });
+
+            // 关闭输入端，触发 FFmpeg 封尾闭合
+            stdin.end();
+            await processExitPromise;
+            await fs.rename(tmpStreamPath, config.outputFile);
+            logger.log(`🎉 视频流式合并成功 : ${config.outputFile}`, { colorful: true });
+
+            if (config.enableDelAfterDone) {
+                await logger.close();
+                await fs.rm(config.tempDir, { recursive: true, force: true });
+                logger.log("🧹 已清理全部临时文件");
+            }
+        } catch (err) {
+            stdin.destroy();
+            await fs.unlink(tmpStreamPath);
+            logger.log("流式合并失败，临时文件已删除", { colorful: true });
+            logger.warn("流式合并不支持断点续传，对网络稳定性要求较高，请检查网络连接或适当放宽下载配置");
+            logger.error(`${getErrorMessage(err)}`);
+            throw err;
         }
     }
 
