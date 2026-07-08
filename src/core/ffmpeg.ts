@@ -107,6 +107,7 @@ export async function mergeSegments(filePaths: string[], outputFile: string): Pr
         logger.error(`pipeline发生错误: ${getErrorMessage(err)}`);
         // 发生错误时确保关闭管道，防止 FFmpeg 挂起
         stdin.destroy();
+        await processExitPromise.catch(() => void 0);
         throw err;
     }
 }

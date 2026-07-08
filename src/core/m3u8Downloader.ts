@@ -198,7 +198,9 @@ export class M3U8Downloader {
         try {
             await mergeSegments(fileLines, config.outputFile);
             logger.log(`🎉 视频封装合并成功: ${config.outputFile}`, { colorful: true });
+            // 是否清理临时文件夹
             if (config.enableDelAfterDone) {
+                // logger输出在临时文件夹，此时输出已无意义，因此先关闭日志流
                 await logger.close();
                 await fs.rm(config.tempDir, { recursive: true, force: true });
                 logger.log("🧹 已清理全部临时缓存分片");
@@ -246,10 +248,10 @@ export class M3U8Downloader {
             }
         } catch (err) {
             stdin.destroy();
+            await processExitPromise;
             await fs.unlink(tmpStreamPath);
             logger.log("流式合并失败，临时文件已删除", { colorful: true });
             logger.warn("流式合并不支持断点续传，对网络稳定性要求较高，请检查网络连接或适当放宽下载配置");
-            logger.error(`${getErrorMessage(err)}`);
             throw err;
         }
     }
