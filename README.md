@@ -107,14 +107,14 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 | 参数                 | 类型    | 默认值     | 说明
 | -------------------- | ------- | ---------- | -------------------------------------------------
-| `browser`            | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 详见<https://apify.github.io/impit/js/types/Browser.html>
+| `browser`            | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见<https://apify.github.io/impit/js/types/Browser.html>
 | `proxyUrl`           | string  | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`
 | `headers`            | object  | `{}`       | 请求头（同时用于请求m3u8文件及分片）（Referer、Cookies 等）
 | `range`              | string  | `""`       | 分片选择范围 详见 [range设置格式](#range设置格式)
 | `concurrency`        | number  | `16`       | 分片迸发请求数
 | `maxRetries`         | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
 | `timeout`            | number  | `60000`    | 网络请求的超时毫秒（包含请求及连接时间，如果分片过大建议提高超时时间）
-| `streamMerge`        | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） 详见[下载模式对比](#下载模式对比)
+| `streamMerge`        | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br> 详见[下载模式对比](#下载模式对比)
 | `noMerge`            | boolean | `false`    | 分片下载完毕不自动合并
 | `forceMerge`         | boolean | `false`    | 下分片下载不完整时强制合并
 | `enableDelAfterDone` | boolean | `false`    | 下载完毕后删除临时文件夹
@@ -139,13 +139,13 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 #### 下载模式对比
 
-| 模式对比 | 模式一：缓存后再合并 | 模式二：流式实时合并
+| 模式对比 | 缓存后再合并 | 流式实时合并
 | -------- | ---------------------- | ----------------------
 | **配置项** | `streamMerge: false` （默认值） | `streamMerge: true`
-| **工作原理** | 流式下载分片 ➔ **流式写入硬盘缓存** ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并 ➔ **写入最终视频** | 流式下载分片 ➔ **暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式写入最终视频**
+| **工作原理** | 流式下载分片 ➔ **流式写入硬盘缓存**  <br> ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并  <br> ➔ **写入最终视频** | 流式下载分片 ➔ **暂存内存**  <br> ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式写入最终视频**
 | **磁盘写入量** | **2 倍** 视频大小 | **1 倍** 视频大小
-| **断点续传** | 🌟 **支持**，所有分片均会缓存到本地 | ❌ **不支持**，任意分片超出最大重试次数则全部报废
-| **网络要求** | **普通** | **非常高**，如果反复失败建议放宽下载配置或更换模式
+| **断点续传** | 🌟 **支持** <br> 所有分片均会缓存到本地 | ❌ **不支持** <br> 任意分片超出最大重试次数则全部报废
+| **网络要求** | **普通** | **非常高** <br> 如果反复失败建议放宽下载配置或更换模式
 | **内存占用** | 无额外占用 | 最多额外占用 `[迸发数 * 分片平均大小]` 内存
 
 #### range设置格式
