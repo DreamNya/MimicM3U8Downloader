@@ -66,6 +66,9 @@ export function createSegmentStream(body: ImpitResponse["body"], keyInfo?: Segme
             throw new Error(`🔒 密钥未被缓存，请确保预检成功! URL: ${keyInfo.url}`);
         }
         const decipher = crypto.createDecipheriv("aes-128-cbc", keyBuffer, keyInfo.iv);
+        // 将源下载流的错误转发给 decipher 传导给上层，防止触发全局未捕获异常
+        downloadStream.on("error", (err) => decipher.emit("error", err));
+
         return downloadStream.pipe(decipher);
     }
 
