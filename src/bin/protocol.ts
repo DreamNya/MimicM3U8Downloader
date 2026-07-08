@@ -69,3 +69,8 @@ export function runProtocol(): void {
         process.exit(1);
     }
 }
+
+// 如果通过node直接运行
+if (process.argv[1] === import.meta.filename) {
+    runProtocol();
+}
