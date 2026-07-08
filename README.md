@@ -51,8 +51,17 @@ npm install
 
 下载编译后的文件
 
+GitHub Release（多平台）
+
 ```text
 https://github.com/DreamNya/MimicM3U8Downloader/releases
+```
+
+蓝奏云分流（仅windows）
+
+```text
+https://wwbwh.lanzouw.com/b01d72je4h
+密码:496r
 ```
 
 ---
