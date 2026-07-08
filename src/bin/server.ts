@@ -33,7 +33,12 @@ function getRequestBody(req: http.IncomingMessage): Promise<Buffer> {
 export async function runServer(): Promise<void> {
     const settingPath = getSettingPath("server.setting.json");
     // JSON解析失败则立即抛出错误终止运行
-    const { Port = 12345 } = JSON.parse(await fs.readFile(settingPath, "utf-8").catch(() => "{}"));
+    const { Port = 12345 } = JSON.parse(
+        await fs.readFile(settingPath, "utf-8").catch(() => {
+            console.log("⚠️ 未读取到 config/server.setting.json 将使用默认设置");
+            return "{}";
+        })
+    );
     return new Promise<void>((resolve, reject) => {
         const server = http.createServer(async (req, res) => {
             try {

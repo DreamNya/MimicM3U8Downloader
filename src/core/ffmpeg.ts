@@ -2,7 +2,7 @@ import { logger } from "#src/common/logger.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { Readable } from "node:stream";
+import { type Writable, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 export async function parseSegmentInfo(filePath: string): Promise<string> {
@@ -31,14 +31,16 @@ export async function parseSegmentInfo(filePath: string): Promise<string> {
     return result.join("\n");
 }
 
-export async function mergeSegments(fileLines: string[], outputFile: string): Promise<void> {
-    // 启动 FFmpeg，输入指定为 pipe:0 (即标准输入 stdin)
+function createFFmpegMergeProcess(outputFile: string): {
+    stdin: Writable;
+    processExitPromise: Promise<void>;
+} {
     const ffmpegChild = spawn("ffmpeg", [
         "-hide_banner",
         "-i",
-        "pipe:0", // 让 FFmpeg 从管道接收二进制流并自动探测格式
+        "pipe:0", // 从标准输入管道接收流
         "-c",
-        "copy",
+        "copy", // 仅封装，不重编码
         outputFile,
         "-y",
     ]);
@@ -53,13 +55,13 @@ export async function mergeSegments(fileLines: string[], outputFile: string): Pr
         // 累加到内存缓冲区中
         ffmpegLogBuffer += chunk.toString();
     });
+
     ffmpegChild.stdout.on("data", (chunk: Buffer) => {
         process.stdout.write(chunk);
         ffmpegLogBuffer += chunk.toString();
     });
 
     const processExitPromise = new Promise<void>((resolve, reject) => {
-        // 进程关闭时的回调
         ffmpegChild.on("close", (code) => {
             if (ffmpegLogBuffer.trim()) {
                 logger.log(
@@ -73,14 +75,21 @@ export async function mergeSegments(fileLines: string[], outputFile: string): Pr
                 reject(new Error(`FFmpeg 进程异常退出，退出码: ${code}`));
             }
         });
-        ffmpegChild.on("error", (err) => {
-            reject(err);
-        });
+        ffmpegChild.on("error", reject);
     });
+
+    return {
+        stdin: ffmpegChild.stdin!,
+        processExitPromise,
+    };
+}
+
+export async function mergeSegments(filePaths: string[], outputFile: string): Promise<void> {
+    const { stdin, processExitPromise } = createFFmpegMergeProcess(outputFile);
 
     // 定义一个异步生成器，按顺序读取并吐出每个文件的二进制数据
     async function* mergeGenerator() {
-        for (const filePath of fileLines) {
+        for (const filePath of filePaths) {
             const readStream = fs.createReadStream(filePath);
 
             // 使用 for await 顺次读取当前文件的每一个chunk
@@ -92,14 +101,22 @@ export async function mergeSegments(fileLines: string[], outputFile: string): Pr
 
     try {
         // pipeline 会在数据全部推完后，自动调用 ffmpegChild.stdin.end()
-        await pipeline(Readable.from(mergeGenerator()), ffmpegChild.stdin);
+        await pipeline(Readable.from(mergeGenerator()), stdin);
         await processExitPromise;
     } catch (err) {
-        logger.error(`pipeline发生错误: ${getErrorMessage}`);
+        logger.error(`pipeline发生错误: ${getErrorMessage(err)}`);
         // 发生错误时确保关闭管道，防止 FFmpeg 挂起
-        ffmpegChild.stdin.destroy();
+        stdin.destroy();
         throw err;
     }
+}
+
+/**
+ * 启动流式 FFmpeg 封装进程
+ * @returns 返回输入流 stdin 和进程结束的 Promise
+ */
+export function startStreamMerge(outputFile: string) {
+    return createFFmpegMergeProcess(outputFile);
 }
 
 function getVideoInfo(filePath: string): Promise<string> {
@@ -124,4 +141,8 @@ function getVideoInfo(filePath: string): Promise<string> {
             reject(err);
         });
     });
+}
+
+export function formatFFmpegPath(filePath: string): string {
+    return filePath.replace(/\\/g, "/");
 }

@@ -138,3 +138,5 @@ dist
 # Custom
 libs/*
 !libs/.gitkeep
+config/server.setting.json
+config/worker.setting.json
