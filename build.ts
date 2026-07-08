@@ -1,94 +1,59 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck
 
-import { $ } from "bun";
 import fs from "node:fs";
-import path from "node:path";
 import pkg from "./package.json";
 
 const version = pkg.version;
-const libsDir = "./libs";
-const destDir = "./libs/binaries";
 
-if (!fs.existsSync(destDir)) {
-    fs.mkdirSync(destDir, { recursive: true });
-    const files = fs.readdirSync(libsDir);
-    for (const file of files) {
-        if (file.endsWith(".tgz")) {
-            const tarPath = `${libsDir}/${file}`;
-            const tempDir = `${libsDir}/${file.replace(/\.tgz$/, "")}`;
+const targetMaps = ["bun-windows-x64", "bun-linux-x64", "bun-darwin-arm64", "bun-darwin-x64"];
 
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir, { recursive: true });
-            }
-            // 调用系统 tar 命令解压到目录
-            await $`tar -xzf ${tarPath} -C ${tempDir}`;
-            const pkgDir = `${tempDir}/package`;
-            if (fs.existsSync(pkgDir)) {
-                const pkgFiles = fs.readdirSync(pkgDir);
-                for (const pf of pkgFiles) {
-                    if (pf.endsWith(".node")) {
-                        const srcNode = `${pkgDir}/${pf}`;
-                        const destNode = `${destDir}/${pf}`;
-                        await $`cp ${srcNode} ${destNode}`;
-                    }
-                }
-            }
-        }
+// 从环境变量获取当前构建目标
+let target = process.env.TARGET_PLATFORM;
+if (!target) {
+    const platform = process.platform;
+    const arch = process.arch;
+    if (platform === "win32" && arch === "x64") {
+        target = "bun-windows-x64";
+    } else if (platform === "linux" && arch === "x64") {
+        target = "bun-linux-x64";
+    } else if (platform === "darwin" && arch === "arm64") {
+        target = "bun-darwin-arm64";
+    } else if (platform === "darwin" && arch === "x64") {
+        target = "bun-darwin-x64";
     }
 }
 
-const impitRedirectPlugin = {
-    name: "impit-redirect-plugin",
-    setup(build: {
-        onResolve: (
-            arg0: { filter: RegExp },
-            arg1: (args: { importer: string | string[] }) => { path: string } | undefined
-        ) => void;
-    }) {
-        // 精准拦截 impit 内部引用 "./index.js" 的动作
-        build.onResolve({ filter: /^\.\/index(\.js)?$/ }, (args: { importer: string | string[] }) => {
-            // 确保这个引用的发起者（importer）是在 impit 依赖包内部
-            if (args.importer.includes("impit")) {
-                return { path: path.resolve("./src/build/impit-adapter.ts") };
-            }
-        });
-    },
-};
-const targetMaps = {
-    "bun-windows-x64": "impit-node.win32-x64-msvc.node",
-    "bun-linux-x64": "impit-node.linux-x64-gnu.node",
-    "bun-darwin-arm64": "impit-node.darwin-arm64.node",
-    "bun-darwin-x64": "impit-node.darwin-x64.node",
-};
-for (const [target, libName] of Object.entries(targetMaps)) {
-    console.log(`正在编译目标平台: ${target}...`);
-    const targetDir = target.replace("bun", "MimicM3U8Downloader");
-    await Bun.build({
-        entrypoints: ["./src/build/main.ts"],
-        minify: true,
-        // 声明 impit-node 为外部依赖，不打包
-        external: ["impit-node"],
-        plugins: [impitRedirectPlugin],
-        compile: {
-            target: target,
-            outfile: `./dist/${targetDir}/MimicM3U8Downloader`,
-            ...(target === "bun-windows-x64" && {
-                windows: {
-                    title: "MimicM3U8Downloader",
-                    publisher: "DreamNya",
-                    version,
-                    description: "MimicM3U8Downloader",
-                    copyright: "Copyright 2026 DreamNya",
-                },
-            }),
-        },
-    });
-
-    fs.mkdirSync(`dist/${targetDir}/lib/`, { recursive: true });
-    fs.copyFileSync(`${destDir}/${libName}`, `dist/${targetDir}/lib/${libName}`);
-    fs.copyFileSync("README.md", `dist/${targetDir}/README.md`);
-    fs.copyFileSync("package.json", `dist/${targetDir}/package.json`);
-    fs.cpSync("config", `dist/${targetDir}/config`, { recursive: true });
-    await $`powershell -Command "Compress-Archive -Path '${`dist/${targetDir}/*`}' -DestinationPath 'dist/${targetDir}.zip' -CompressionLevel Optimal -Force"`;
+if (!target || !targetMaps.includes(target)) {
+    console.error(`❌ 未知或不支持的构建目标。支持列表: ${targetMaps.join(", ")}`);
+    process.exit(1);
 }
+
+console.log(`\n🚀 [自动注入模式] 正在编译目标平台: ${target}...`);
+const targetDir = target.replace("bun", `MimicM3U8Downloader-${version}`);
+
+// 让 Bun 自动解析并打包所有依赖（包括 .node 二进制模块）
+await Bun.build({
+    entrypoints: ["./src/build/main.ts"],
+    minify: true,
+    compile: {
+        target: target,
+        outfile: `./dist/${targetDir}/MimicM3U8Downloader`,
+        ...(target === "bun-windows-x64" && {
+            windows: {
+                title: "MimicM3U8Downloader",
+                publisher: "DreamNya",
+                version,
+                description: "MimicM3U8Downloader",
+                copyright: "Copyright 2026 DreamNya",
+            },
+        }),
+    },
+});
+
+fs.copyFileSync("README.md", `dist/${targetDir}/README.md`);
+fs.copyFileSync("package.json", `dist/${targetDir}/package.json`);
+fs.mkdirSync(`dist/${targetDir}/config`, { recursive: true });
+fs.copyFileSync("config/[example]server.setting.json", `dist/${targetDir}/config/[example]server.setting.json`);
+fs.copyFileSync("config/[example]worker.setting.json", `dist/${targetDir}/config/[example]worker.setting.json`);
+console.log(`✨ 平台 ${target} 纯单文件编译完成 -> dist/${targetDir}\n`);

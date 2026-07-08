@@ -1,0 +1,89 @@
+name: Build and Release Multi-Platform
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: bun-windows-x64
+          - os: ubuntu-latest
+            target: bun-linux-x64
+          - os: macos-15-intel # Intel 芯片 Mac
+            target: bun-darwin-x64
+          - os: macos-14 # Apple 芯片 Mac (M1/M2/M3)
+            target: bun-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run Build Script
+        env:
+          TARGET_PLATFORM: ${{ matrix.target }}
+        run: bun run build
+
+      # 跨平台打包：Windows 产出 .zip，Linux/macOS 产出 .tar.gz
+      - name: Pack Artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $VERSION = (Get-Content package.json | ConvertFrom-Json).version
+          $TARGET_DIR = "${{ matrix.target }}".Replace("bun", "MimicM3U8Downloader-$VERSION")
+          Compress-Archive -Path "dist/$TARGET_DIR/*" -DestinationPath "dist/MimicM3U8Downloader-${{ matrix.target }}-$VERSION.zip" -Force
+
+      - name: Pack Artifact (Linux & macOS)
+        if: matrix.os != 'windows-latest'
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TARGET_DIR=$(echo "${{ matrix.target }}" | sed "s/bun/MimicM3U8Downloader-$VERSION/")
+          cd dist && tar -czf "MimicM3U8Downloader-${{ matrix.target }}-$VERSION.tar.gz" "$TARGET_DIR"
+
+      # 将打包好的压缩包作为 CI 产物上传（保留 90 天）
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-binary
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') # 仅在推送 tag 时自动创建 Release 发布
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+
+      - name: Flatten folder structure
+        run: |
+          mkdir out
+          find dist-artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} out/ \;
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
