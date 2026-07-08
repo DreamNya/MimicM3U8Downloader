@@ -47,14 +47,16 @@ jobs:
         run: |
           $VERSION = (Get-Content package.json | ConvertFrom-Json).version
           $TARGET_DIR = "${{ matrix.target }}".Replace("bun", "MimicM3U8Downloader-$VERSION")
-          Compress-Archive -Path "dist/$TARGET_DIR/*" -DestinationPath "dist/MimicM3U8Downloader-${{ matrix.target }}-$VERSION.zip" -Force
+          $PLATFORM = "${{ matrix.target }}".Replace("bun-", "")
+          Compress-Archive -Path "dist/$TARGET_DIR/*" -DestinationPath "dist/MimicM3U8Downloader-$VERSION-$PLATFORM.zip" -Force
 
       - name: Pack Artifact (Linux & macOS)
         if: matrix.os != 'windows-latest'
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TARGET_DIR=$(echo "${{ matrix.target }}" | sed "s/bun/MimicM3U8Downloader-$VERSION/")
-          cd dist && tar -czf "MimicM3U8Downloader-${{ matrix.target }}-$VERSION.tar.gz" "$TARGET_DIR"
+          PLATFORM=$(echo "${{ matrix.target }}" | sed "s/bun-//")
+          cd dist && tar -czf "MimicM3U8Downloader-$VERSION-$PLATFORM.tar.gz" "$TARGET_DIR"
 
       # 将打包好的压缩包作为 CI 产物上传（保留 90 天）
       - name: Upload Artifact
@@ -85,5 +87,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: out/*
+          generate_release_notes: true # 开启此项后，GitHub 会自动生成 "What's Changed" 变更日志
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

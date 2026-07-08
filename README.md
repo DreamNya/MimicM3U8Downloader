@@ -341,18 +341,21 @@ curl -X POST "http://127.0.0.1:12345" \
 
 本项目依赖TypeScript / ESM架构 / C++编译库，开发环境采用 Node.js，仅 SEA 编译环境使用 Bun
 
-SEA编译方法
-(`build.ts`编译方法仅供参考)
+手动SEA编译方法（单平台）
 
 ```bash
-npm run packImpit
 bun run build
+```
+
+GitHub Action（多平台）
+
+```bash
+.github\workflows\build.yml
 ```
 
 ### TODO
 
 * [ ] SAMPLE-AES解密 （不含DRM）
-* [ ] GitHub CI/CD
 * [ ] 解析本地m3u8
 * [ ] 前端GUI
 
