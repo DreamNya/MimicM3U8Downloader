@@ -1,4 +1,5 @@
 import type { Segment } from "#src/core/m3u8Parser.ts";
+
 /**
  * 根据配置的 range 规则过滤分片列表
  */

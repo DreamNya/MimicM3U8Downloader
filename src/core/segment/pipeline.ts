@@ -3,10 +3,10 @@ import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, sleep } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
-import { createSegmentStream } from "#src/core/segment/crypto.ts";
-import type { ProgressState } from "#src/core/segment/downloader.ts";
-import { formatFileInfo } from "#src/core/segment/storage.ts";
 import type { ImpitOptions } from "impit";
+import { createSegmentStream } from "./crypto.ts";
+import type { ProgressState } from "./downloader.ts";
+import { formatFileInfo } from "./storage.ts";
 
 interface DownloadToBufferOptions {
     url: string;

@@ -4,11 +4,14 @@ import { formatTime, getErrorMessage } from "#src/common/utils.ts";
 import { formatFFmpegPath, mergeSegments, parseSegmentInfo, startStreamMerge } from "#src/core/ffmpeg.ts";
 import { M3u8Parser, type ParsedM3u8, type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
-import { preflightKeys } from "#src/core/segment/crypto.ts";
-import { downloadSegment } from "#src/core/segment/downloader.ts";
-import { filterSegmentsByRange } from "#src/core/segment/filter.ts";
-import { pipeSegmentsToStream } from "#src/core/segment/pipeline.ts";
-import { formatFileInfo, initResumableDownload } from "#src/core/segment/storage.ts";
+import {
+    downloadSegment,
+    filterSegmentsByRange,
+    formatFileInfo,
+    initResumableDownload,
+    pipeSegmentsToStream,
+    preflightKeys,
+} from "#src/core/segment/index.ts";
 import type { ImpitOptions } from "impit";
 import fs from "node:fs/promises";
 import path from "node:path";

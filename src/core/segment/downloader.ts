@@ -3,12 +3,12 @@ import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, sleep } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
-import { createSegmentStream } from "#src/core/segment/crypto.ts";
 import type { ImpitOptions, ImpitResponse } from "impit";
 import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { createSegmentStream } from "./crypto.ts";
 
 export interface DownloadInfo {
     url: string;
