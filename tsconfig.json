@@ -10,7 +10,8 @@
         "skipLibCheck": true,
         "noEmit": true,
         "allowImportingTsExtensions": true,
-        "rewriteRelativeImportExtensions": false
+        "rewriteRelativeImportExtensions": false,
+        "verbatimModuleSyntax": true
     },
     "include": ["src/**/*"]
 }

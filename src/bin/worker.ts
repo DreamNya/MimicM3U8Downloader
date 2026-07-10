@@ -8,11 +8,11 @@ console.log(`MimicM3U8Downloader v${pkg.version}\n\n`);
 
 export async function runWorker() {
     process.on("unhandledRejection", (error) => {
-        logger.error(`【全局捕获】未处理的 Promise 拒绝：${error}`, { print: false });
+        logger.error(`【未处理的 Promise 拒绝】${error}`);
         process.exitCode = 1;
     });
     process.on("uncaughtException", (error) => {
-        logger.error(`【全局捕获】未捕获的异常：${error}`, { print: false });
+        logger.error(`【未捕获的异常】${error}`);
         process.exitCode = 1;
     });
 

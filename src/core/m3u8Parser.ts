@@ -21,7 +21,7 @@ export interface ParsedM3u8 {
 }
 
 export class M3u8Parser {
-    #url: string;
+    readonly #url: string;
 
     constructor(url: string) {
         this.#url = url;

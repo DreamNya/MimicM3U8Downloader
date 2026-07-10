@@ -23,6 +23,8 @@ interface StreamPipelineOptions {
     concurrency: number;
     maxRetries: number;
     initialBuffers?: Buffer[];
+    progress?: { count: number };
+    startIndex?: number;
 }
 
 /**
@@ -79,7 +81,7 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
  * 并发控制与背压管理管道
  */
 export async function pipeSegmentsToStream(options: StreamPipelineOptions): Promise<void> {
-    const { segments, targetStream, concurrency, maxRetries, initialBuffers = [] } = options;
+    const { segments, targetStream, concurrency, maxRetries, initialBuffers = [], startIndex = 0 } = options;
 
     // 写入首分片
     for (const buf of initialBuffers) {
@@ -123,13 +125,14 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
     };
 
     try {
+        const maxInitialLength = Math.min(startIndex + concurrency, segments.length);
         // 预填满初始并发池
-        for (let i = 0; i < Math.min(concurrency, segments.length); i++) {
+        for (let i = startIndex; i < maxInitialLength; i++) {
             triggerDownload(i);
         }
 
         // 顺序消费并推流
-        for (let i = 0; i < segments.length; i++) {
+        for (let i = startIndex; i < segments.length; i++) {
             if (i + concurrency - 1 < segments.length) {
                 triggerDownload(i + concurrency - 1);
             }
@@ -143,6 +146,9 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
             }
 
             taskCache.delete(i);
+            if (options.progress) {
+                options.progress.count = i + 1;
+            }
         }
     } catch (err) {
         controller.abort();

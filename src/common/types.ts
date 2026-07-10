@@ -53,12 +53,27 @@ export interface DownloadOptions {
      * 流式合并
      * * 下载分片后直接在内存中流式合并
      * * ℹ️ 可减少≈50%磁盘写入量
-     * * 🚨 不支持断点续传，对网络稳定性要求较高
+     * * 🚨 关于流式合并断点续传 详见 streamMergeFMP4, streamMergeForceMerge 说明
      * * ⚠️ 最多额外占用 [迸发数*分片平均大小] 内存
      * * ⚠️ 如果为 true 则忽略: noMerge, forceMerge
      * @default false
      */
     streamMerge: boolean;
+    /**
+     * 流式合并时输出格式为fMP4
+     * * ℹ️ 仅 streamMerge 为 true 时有效
+     * * ℹ️ 默认为 false 输出格式为 mp4（对断点续传不友好）
+     * * ⚠️ 如果为 true 则忽略: streamMergeForceMerge
+     * @default false
+     */
+    streamMergeFMP4: boolean;
+    /**
+     * 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件
+     * * ℹ️ 仅 streamMerge 为 true 时有效
+     * * 🚨 会额外增加 100% 磁盘写入量 （相当于降级为普通下载）
+     * @default false
+     */
+    streamMergeForceMerge: boolean;
     /**
      * 分片下载完毕不自动合并
      * * ⚠️ 如果为 true 则忽略: forceMerge
