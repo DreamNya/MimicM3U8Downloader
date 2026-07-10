@@ -4,8 +4,8 @@ import fs from "fs";
 import path from "path";
 
 class Logger {
-    #FILEPATH = `${config.tempDir}/${Date.now()}.log`;
-    #stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
+    readonly #FILEPATH = `${config.tempDir}/${Date.now()}.log`;
+    readonly #stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
 
     log(message: string, { print = true, log = true, colorful = false } = {}): void {
         const timeStamp = this.now();

@@ -51,13 +51,13 @@ npm install
 
 下载编译后的文件
 
-GitHub Release（多平台）
+* **GitHub Release（多平台）**
 
 ```text
 https://github.com/DreamNya/MimicM3U8Downloader/releases
 ```
 
-蓝奏云分流（仅windows）
+* **蓝奏云分流（仅windows）**
 
 ```text
 https://wwbwh.lanzouw.com/b01d72je4h
@@ -79,7 +79,10 @@ https://wwbwh.lanzouw.com/b01d72je4h
 ### FFmpeg
 
 无论是Node.js模式还是编译模式均需安装FFmpeg
+
 请确保本地环境中已经安装 FFmpeg，且正确配置**环境变量**
+
+（`fMP4` 模式需要同时安装 FFprobe）
 
 ---
 
@@ -105,21 +108,23 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 下载器全局配置参数
 
-| 参数                 | 类型    | 默认值     | 说明
-| -------------------- | ------- | ---------- | -------------------------------------------------
-| `browser`            | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见<https://apify.github.io/impit/js/types/Browser.html>
-| `proxyUrl`           | string  | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`
-| `headers`            | object  | `{}`       | 请求头（同时用于请求m3u8文件及分片）（Referer、Cookies 等）
-| `range`              | string  | `""`       | 分片选择范围 详见 [range设置格式](#range设置格式)
-| `concurrency`        | number  | `16`       | 分片迸发请求数
-| `maxRetries`         | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
-| `timeout`            | number  | `60000`    | 网络请求的超时毫秒（包含请求及连接时间，如果分片过大建议提高超时时间）
-| `streamMerge`        | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br> 详见[下载模式对比](#下载模式对比)
-| `noMerge`            | boolean | `false`    | 分片下载完毕不自动合并
-| `forceMerge`         | boolean | `false`    | 下分片下载不完整时强制合并
-| `enableDelAfterDone` | boolean | `false`    | 下载完毕后删除临时文件夹
-| `pauseAfterDone`     | boolean | `true`     | 下载完毕后暂停交互窗口
-| `debug`              | boolean | `false`    | 记录debug中间产物
+| 参数                    | 类型    | 默认值     | 说明
+| --------------------    | ------- | ---------- | -------------------------------------------------
+| `browser`               | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]
+| `proxyUrl`              | string  | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`
+| `headers`               | object  | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）
+| `range`                 | string  | `""`       | 分片选择范围 详见 [range设置格式](#range设置格式)
+| `concurrency`           | number  | `16`       | 分片迸发请求数
+| `maxRetries`            | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
+| `timeout`               | number  | `60000`    | 网络请求的超时毫秒<br />（包含请求及连接时间，如果分片过大建议提高超时时间）
+| `streamMerge`           | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）
+| `streamMergeFMP4`       | boolean | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）
+| `streamMergeForceMerge` | boolean | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件
+| `noMerge`               | boolean | `false`    | 分片下载完毕不自动合并
+| `forceMerge`            | boolean | `false`    | 下分片下载不完整时强制合并
+| `enableDelAfterDone`    | boolean | `false`    | 下载完毕后删除临时文件夹
+| `pauseAfterDone`        | boolean | `true`     | 下载完毕后暂停交互窗口
+| `debug`                 | boolean | `false`    | 记录debug中间产物
 
 ---
 
@@ -139,14 +144,31 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 #### 下载模式对比
 
-| 模式对比 | 缓存后再合并 | 流式实时合并
-| -------- | ---------------------- | ----------------------
-| **配置项** | `streamMerge: false` （默认值） | `streamMerge: true`
-| **工作原理** | 流式下载分片 ➔ **流式写入硬盘缓存**  <br> ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并  <br> ➔ **写入最终视频** | 流式下载分片 ➔ **暂存内存**  <br> ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式写入最终视频**
-| **磁盘写入量** | **2 倍** 视频大小 | **1 倍** 视频大小
-| **断点续传** | 🌟 **支持** <br> 所有分片均会缓存到本地 | ❌ **不支持** <br> 任意分片超出最大重试次数则全部报废
-| **网络要求** | **普通** | **非常高** <br> 如果反复失败建议放宽下载配置或更换模式
-| **内存占用** | 无额外占用 | 最多额外占用 `[迸发数 * 分片平均大小]` 内存
+| 模式对比 | 缓存后再合并（默认模式） | 流式实时合并 | 流式实时合并(fMP4)
+| -------- | ---------------------- | ---------------------- | --------
+| **配置项** | `streamMerge: false` | `streamMerge: true`<br/>`streamMergeFMP4: false` | `streamMerge: true`<br>`streamMergeFMP4: true`
+| **视频格式** | 标准mp4 | 标准mp4 | fMP4
+| **磁盘写入** | 总是 **2 倍** 视频大小 | 正常下载：**1 倍** 视频大小<br>断点续传不合并：**1 倍** 视频大小<br>断点续传后合并：**2 倍** 视频大小 | 总是 **1 倍** 视频大小
+| **断点续传** | **支持** | **有限支持*** | **有限支持***
+| **内存占用** | 无额外占用 | 最多额外占用<br /> `[迸发数 * 分片平均大小]` 内存 | 最多额外占用<br /> `[迸发数 * 分片平均大小]` 内存
+| **备注** | 无 | 仅**断点续传**时<br />如果`streamMergeForceMerge`<br />为`false`：生成多个独立mp4片段<br />为`true`：将所有片段合并为完整mp4 | 该模式仍在测试中\*\*<br>可能存在未知Bug<br>欢迎在 ISSUE 中反馈
+
+> \* 仅在下载过程中发生网络错误、连接异常等下载流中断时支持断点续传继续下载（此时FFmpeg合并的均为干净数据）
+> 若发生校验/合并异常则不支持断点续传（说明此时FFmpeg合并数据已被污染）
+> 受Node.js限制，如果模块被用户主动停止/退出也不支持断点续传（无法通知并等待FFmpeg进行EOL截断）
+>
+> \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况
+> 详见 [src/core/fMP4.ts](src/core/fMP4.ts)
+
+#### 下载模式工作原理
+
+* 缓存后再合并：流式下载分片 ➔ **流式写入硬盘缓存**  ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并 ➔ **写入最终视频**
+* 流式实时合并：流式下载分片 ➔ **未合并分片暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式合并写入最终视频**  
+
+> 默认（传统）模式，先将分片下载到磁盘缓存再进行合并，这样会进行2倍读写I/O
+> 流式实时合并模式，会将分片下载到内存，然后直接通过管道传递给FFmpeg进行合并且流式写入磁盘，这样则减少了额外的读写I/O
+> 流式实时合并最多将[迸发数]个分片暂存在内存中（而非所有分片），无需担心内存溢出
+> 假设迸发数为16、分片平均大小500KB，则最多额外占用16*500KB=8MB内存
 
 #### range设置格式
 
@@ -154,7 +176,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 | 范围分类         | 示例格式                                 | 实际下载范围 / 行为说明
 | ---------------- | ---------------------------------------- | ------------------------------------------
-| **索引格式**     | `"123,128,130"`                          | 仅下载索引为 123、128、130 的分片，多段之间用逗号 `,` 分割
+| **索引格式**     | `"123,128,130"`                          | 仅下载索引为 123、128、130 的分片（多分片用 `,` 分割）
 | (数字索引)       | `"120-"`                                 | 下载从第 120 分片开始的所有后续分片
 |                  | `"120-200"`                              | 下载闭区间 120 ~ 200 之间的所有分片
 |                  | `"-200"`                                 | 下载从开头第 0 分片到第 200 分片的所有分片
@@ -213,13 +235,13 @@ function BTOA(str: string): string {
 * **Node.js模式**
 
 ```bash
-node src/bin/worker.ts --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\"}'
+node src/bin/worker.ts --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\",\"Origin\":\"https://example.com/\"}'
 ```
 
 * **编译模式**
 
 ```bash
-MimicM3U8Downloader --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\"}'
+MimicM3U8Downloader --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\",\"Origin\":\"https://example.com/\"}'
 ```
 
 ---
@@ -319,6 +341,7 @@ GM_xmlhttpRequest({
         workDir: 'D:/m3u8',
         headers: {
             Referer: location.href,
+            Origin: location.origin,
         },
     }),
     onload: (xhr) => console.log(xhr),
@@ -335,7 +358,8 @@ curl -X POST "http://127.0.0.1:12345" \
     "saveName": "视频保存名称",
     "workDir": "D:/m3u8",
     "headers": {
-      "Referer": "https://example.com"
+      "Referer": "https://example.com",
+      "Origin": "https://example.com",
     }
   }'
 ```

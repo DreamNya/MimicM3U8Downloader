@@ -25,6 +25,8 @@ const defaultConfig: DownloadOptions = {
     maxRetries: 3,
     timeout: 60000,
     streamMerge: false,
+    streamMergeFMP4: false,
+    streamMergeForceMerge: false,
     noMerge: false,
     forceMerge: false,
     enableDelAfterDone: false,
