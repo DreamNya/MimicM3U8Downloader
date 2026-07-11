@@ -54,7 +54,7 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          TARGET_DIR=$(echo "${{ matrix.target }}" | sed "s/bun/MimicM3U8Downloader-$VERSION/")
+          TARGET_DIR=$(echo "${{ matrix.target }}" | sed "s/bun/MimicM3U8Downloader-v$VERSION/")
           PLATFORM=$(echo "${{ matrix.target }}" | sed "s/bun-//")
           cd dist && tar -czf "MimicM3U8Downloader-$VERSION-$PLATFORM.tar.gz" "$TARGET_DIR"
 
