@@ -1,0 +1,8 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": ["src/build/main.ts"],
+    "ignoreBinaries": ["reg", "ffmpeg"],
+    "ignoreIssues": {
+        "src/common/types.ts": ["types"]
+    }
+}

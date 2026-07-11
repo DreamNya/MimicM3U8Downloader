@@ -76,7 +76,7 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     return config;
 }
 
-export async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntimeConfig> {
+async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntimeConfig> {
     const saveName = sanitizeFilename(config.saveName);
     const workDir = config.workDir.replace(/\/$/, "");
     const tempDir = path.join(workDir, saveName);
