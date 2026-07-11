@@ -90,7 +90,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 ### 📂 config/server.setting.json
 
-> 请将 `[example]config/server.setting.json` 复制为 `config/server.setting.json` 以正确生效用户配置
+> 请将 `config/[example]server.setting.json` 复制为 `config/server.setting.json` 以正确生效用户配置
 
 本地 http 服务器配置参数
 
@@ -102,7 +102,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 ### 📂 config/worker.setting.json
 
-> 请将 `[example]config/worker.setting.json` 复制为 `config/worker.setting.json` 以正确生效用户配置
+> 请将 `config/[example]worker.setting.json` 复制为 `config/worker.setting.json` 以正确生效用户配置
 
 下载器全局配置参数
 
@@ -151,18 +151,13 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | **内存占用** | 无额外占用 | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存 | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存
 | **备注** | 无 | 仅**断点续传**时<br />如果`streamMergeForceMerge`<br />为`false`：生成多个独立mp4片段<br />为`true`：将所有片段合并为完整mp4 | 该模式仍在测试中\*\*<br>可能存在未知Bug<br>欢迎在 ISSUE 中反馈
 
-> \* 仅在下载过程中发生网络错误、连接异常等下载流中断时支持断点续传继续下载（此时FFmpeg合并的均为干净数据）
+> \* 仅在下载过程中发生网络错误、连接异常等下载流中断时支持断点续传继续下载（此时FFmpeg合并的均为干净数据）  
+> \- 若发生校验/合并异常则不支持断点续传（说明此时FFmpeg合并数据已被污染）  
+> \- 受Node.js限制，如果模块被用户强行退出将不支持断点续传（无法通知并等待FFmpeg进行EOL截断）  
+> \- 如需手动中断下载，请在CLI中按下Ctrl+C，如此模块可以安全退出并保留断点  
 >
-> 若发生校验/合并异常则不支持断点续传（说明此时FFmpeg合并数据已被污染）
->
-> 受Node.js限制，如果模块被用户强行退出将不支持断点续传（无法通知并等待FFmpeg进行EOL截断）
->
-> 如需手动中断下载，请在CLI中按下Ctrl+C，如此模块可以安全退出并保留断点
->
->
-> \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况
->
-> 详见 [src/core/fMP4.ts](src/core/fMP4.ts)
+> \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况  
+> \- 详见 [src/core/fMP4.ts](src/core/fMP4.ts)  
 
 #### 下载模式工作原理
 
@@ -171,10 +166,8 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 > 默认（传统）模式，先将分片下载到磁盘缓存再进行合并，这样会进行2倍读写I/O
 >
-> 流式实时合并模式，会将分片下载到内存，然后直接通过管道传递给FFmpeg进行合并且流式写入磁盘，这样则减少了额外的读写I/O
->
-> 流式实时合并最多将[并发数]个分片暂存在内存中（而非所有分片），无需担心内存溢出
->
+> 流式实时合并模式，会将分片下载到内存，然后直接通过管道传递给FFmpeg进行合并且流式写入磁盘，这样则减少了额外的读写I/O  
+> 流式实时合并最多将[并发数]个分片暂存在内存中（而非所有分片），无需担心内存溢出  
 > 假设并发数为16、分片平均大小500KB，则最多额外占用16*500KB=8MB内存
 
 #### range设置格式
