@@ -1,6 +1,6 @@
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
-import { getErrorMessage } from "#src/common/utils.ts";
+import { getErrorMessage, safetyExit } from "#src/common/utils.ts";
 import { concatMP4Parts, formatFFmpegPath, startStreamMerge, type SegmentInfo } from "#src/core/ffmpeg.ts";
 import { checkTimescaleMap, completeFMP4Merge, MoofTransform, TimestampAdjuster } from "#src/core/fMP4.ts";
 import type { Segment } from "#src/core/m3u8Parser.ts";
@@ -20,7 +20,7 @@ interface StreamMergeOptions {
     fMP4FilePath: string;
 }
 
-export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promise<void> {
+export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promise<{ skipCleanup: boolean }> {
     // TODO 简化options
     const { segments, segmentInfo, streamState, mapPath, initFilePath, stateFilePath, fMP4FilePath } = options;
     const nextOffset = streamState?.nextOffset ?? 0;
@@ -37,10 +37,11 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
                 await handleConcatMP4Parts(previousParts, config.outputFile);
                 logger.log(`🎉 视频流式合并成功 : ${config.outputFile}`, { colorful: true });
             } else {
-                await renameAllParts(previousParts, stateFilePath);
+                const isRenameFailed = await renameAllParts(previousParts, stateFilePath);
+                return { skipCleanup: isRenameFailed };
             }
         }
-        return;
+        return { skipCleanup: false };
     }
     if (useFMP4 && nextOffset > 0) {
         if (!checkTimescaleMap(segmentInfo.timescaleMap)) {
@@ -85,6 +86,19 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         });
     }
 
+    let aborting = false;
+    const userAbortController = new AbortController();
+    const sigintHandler = () => {
+        if (aborting) {
+            return;
+        }
+        aborting = true;
+        console.log("\n");
+        logger.log("👋 接收到终止信号，正在等待合并流停止...", { colorful: true });
+        userAbortController.abort();
+    };
+    process.on("SIGINT", sigintHandler);
+
     try {
         const initialBuffers: Buffer[] = [];
         if (nextOffset === 0 || isMapFile) {
@@ -102,6 +116,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
             initialBuffers,
             progress: streamProgress,
             startIndex,
+            externalSignal: userAbortController.signal,
         })
             .then(() => {
                 if (stdin.writable) {
@@ -109,7 +124,11 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
                 }
             })
             .catch((err) => {
-                logger.error(`⚠️ [输入流崩溃] 分片下载失败: ${getErrorMessage(err)}`, { print: false });
+                if (userAbortController.signal.aborted) {
+                    logger.log("⚠️ 下载管道已被用户手动终止", { colorful: true });
+                } else {
+                    logger.error(`⚠️ [输入流崩溃] 分片下载失败: ${getErrorMessage(err)}`, { print: false });
+                }
                 // 如果输入流可写则保留数据，否则销毁
                 if (stdin.writable) {
                     stdin.end();
@@ -139,13 +158,14 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
                 if (config.streamMergeForceMerge) {
                     await handleConcatMP4Parts(allParts, config.outputFile);
                 } else {
-                    await renameAllParts(allParts, stateFilePath);
-                    return;
+                    const isRenameFailed = await renameAllParts(allParts, stateFilePath);
+                    return { skipCleanup: isRenameFailed };
                 }
             }
         }
 
         logger.log(`🎉 视频流式合并成功 : ${config.outputFile}`, { colorful: true });
+        return { skipCleanup: false };
     } catch (err) {
         const newOffset = streamProgress.count;
 
@@ -173,7 +193,12 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
                     parts: [...previousParts, savedPartPath],
                 });
             }
-            logger.log("流式合并失败", { colorful: true });
+            if (userAbortController.signal.aborted) {
+                logger.log("👋 流式合并已保存当前断点，模块安全退出", { colorful: true });
+                await safetyExit(config.pauseAfterDone);
+            } else {
+                logger.log("流式合并失败", { colorful: true });
+            }
         } catch (ffmpegErr) {
             stdin.destroy();
             if (useFMP4) {
@@ -186,6 +211,8 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         }
 
         throw err;
+    } finally {
+        process.off("SIGINT", sigintHandler);
     }
 }
 
@@ -196,13 +223,22 @@ async function handleConcatMP4Parts(partPaths: string[], outputFile: string): Pr
     await concatMP4Parts(concatPath, outputFile);
 }
 
-async function renameAllParts(allParts: string[], stateFilePath: string): Promise<void> {
+async function renameAllParts(allParts: string[], stateFilePath: string): Promise<boolean> {
+    let hasError = false;
     for (const part of allParts) {
         const fileName = path.basename(part);
         const outputFile = path.join(config.workDir, `${config.saveName}.${fileName}`);
-        await fs.rename(part, outputFile).catch(() => void 0);
-        logger.log(`🎉 视频流式片段已写入 : ${outputFile}`, { colorful: true });
+        await fs
+            .rename(part, outputFile)
+            .then(() => {
+                logger.log(`🎉 视频流式片段已写入 : ${outputFile}`, { colorful: true });
+            })
+            .catch(() => {
+                hasError = true;
+                logger.log(`🚨 视频流式片段写入失败(降级) : ${part}\n请尝试手动移动并重命名`, { colorful: true });
+            });
     }
     // 清理state文件，防止被重复触发
     await fs.unlink(stateFilePath).catch(() => void 0);
+    return hasError;
 }

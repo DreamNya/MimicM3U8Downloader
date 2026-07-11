@@ -1,5 +1,6 @@
+import { logger } from "#src/common/logger.ts";
 import type { DownloadInputConfig, DownloadOptions, DownloadRuntimeConfig, UserPayload } from "#src/common/types.ts";
-import { ATOB, sanitizeFilename, typedEntries, waitBeforeExit } from "#src/common/utils.ts";
+import { ATOB, safetyExit, sanitizeFilename, typedEntries } from "#src/common/utils.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,9 +37,11 @@ const defaultConfig: DownloadOptions = {
 
 export const config: Readonly<DownloadRuntimeConfig> = await initConfig().catch(async (err) => {
     console.error(err);
-    await waitBeforeExit();
-    process.exit(1);
+    process.exitCode = 1;
+    return await safetyExit(true);
 });
+
+logger.init();
 
 async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     // 解析命令行参数

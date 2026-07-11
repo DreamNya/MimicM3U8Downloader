@@ -25,6 +25,7 @@ interface StreamPipelineOptions {
     initialBuffers?: Buffer[];
     progress?: { count: number };
     startIndex?: number;
+    externalSignal?: AbortSignal;
 }
 
 /**
@@ -81,7 +82,7 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
  * 并发控制与背压管理管道
  */
 export async function pipeSegmentsToStream(options: StreamPipelineOptions): Promise<void> {
-    const { segments, targetStream, concurrency, maxRetries, initialBuffers = [], startIndex = 0 } = options;
+    const { segments, targetStream, concurrency, maxRetries, initialBuffers = [], startIndex = 0, externalSignal } = options;
 
     // 写入首分片
     for (const buf of initialBuffers) {
@@ -94,7 +95,17 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
     // 全局取消信号，防止孤儿并发任务浪费带宽与内存
     const controller = new AbortController();
     const { signal } = controller;
-    const taskCache = new Map<number, Promise<Buffer>>();
+    const taskCache = new Map<number, Promise<Buffer | undefined>>();
+    // 记录错误源头
+    let firstError = null;
+
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+        }
+    }
 
     const triggerDownload = (segIndex: number) => {
         if (segIndex < segments.length && !taskCache.has(segIndex)) {
@@ -114,10 +125,15 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
                     return buf;
                 })
                 .catch((err) => {
-                    progressTracker.add("failed", `分片 [${fileName}] 下载失败`);
-                    progressTracker.print();
-                    controller.abort();
-                    throw err;
+                    if (!signal.aborted) {
+                        progressTracker.add("failed", `分片 [${fileName}] 下载失败`);
+                        progressTracker.print();
+                        // 记录源头错误
+                        firstError = err;
+                        // 终止其他并发下载
+                        controller.abort();
+                    }
+                    return undefined; // 防止未处理的Promise拒绝
                 });
 
             taskCache.set(segIndex, promise);
@@ -137,12 +153,33 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
                 triggerDownload(i + concurrency - 1);
             }
 
-            const buffer = await taskCache.get(i)!;
+            const buffer = await taskCache.get(i);
 
+            if (buffer === undefined) {
+                if (firstError) {
+                    throw firstError;
+                }
+                throw new Error("Operation aborted by user");
+            }
             const canWrite = targetStream.write(buffer);
             if (!canWrite) {
-                // 处理背压控制，防止 FFmpeg 消费慢导致 Node.js 内存堆积
-                await new Promise<void>((resolve) => targetStream.once("drain", resolve));
+                await new Promise<void>((resolve, reject) => {
+                    const onDrain = () => {
+                        externalSignal?.removeEventListener("abort", onAbort);
+                        resolve();
+                    };
+                    const onAbort = () => {
+                        targetStream.removeListener("drain", onDrain);
+                        reject(new Error("Operation aborted by user"));
+                    };
+                    // 处理背压控制，防止 FFmpeg 消费慢导致 Node.js 内存堆积
+                    targetStream.once("drain", onDrain);
+                    if (externalSignal?.aborted) {
+                        onAbort();
+                    } else {
+                        externalSignal?.addEventListener("abort", onAbort, { once: true });
+                    }
+                });
             }
 
             taskCache.delete(i);
@@ -152,10 +189,6 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
         }
     } catch (err) {
         controller.abort();
-        // 对 taskCache 中可能由于 abort 产生 reject 的“遗留” Promise 注册空 catch
-        for (const task of taskCache.values()) {
-            task.catch(() => void 0);
-        }
         throw err;
     }
 }

@@ -1,3 +1,5 @@
+import { logger } from "#src/common/logger.ts";
+
 /**
  * 中文 Base64 解码
  */
@@ -64,7 +66,15 @@ export function typedEntries<T extends object>(obj: T) {
     return Object.entries(obj) as Array<[keyof T, T[keyof T]]>;
 }
 
-export function waitBeforeExit(): Promise<void> {
+export async function safetyExit(wait: boolean = false): Promise<never> {
+    await logger.close();
+    if (wait) {
+        await waitBeforeExit();
+    }
+    process.exit();
+}
+
+function waitBeforeExit(): Promise<void> {
     console.log("\n\n按任意键退出程序...");
     return new Promise<void>((resolve) => {
         if (process.stdin.isTTY) {
