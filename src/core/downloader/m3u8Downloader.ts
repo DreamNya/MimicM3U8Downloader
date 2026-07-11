@@ -70,9 +70,11 @@ export class M3U8Downloader {
             this.#initFilePath = meta.initFilePath;
             this.#segmentInfo = meta.segmentInfo;
 
+            let skipCleanup = false;
+
             if (config.streamMerge) {
                 // 流式合并 暂不支持progressTracker
-                await streamMergeWithFFmpeg({
+                const result = await streamMergeWithFFmpeg({
                     segments,
                     segmentInfo: this.#segmentInfo,
                     streamState,
@@ -81,10 +83,13 @@ export class M3U8Downloader {
                     stateFilePath: this.#stateFilePath,
                     fMP4FilePath: this.#fMP4FilePath,
                 });
+                if (result.skipCleanup) {
+                    skipCleanup = true;
+                }
             } else {
                 await startNormalDownload(segments, mapInfo, this.#mapPath, isResumable);
             }
-            await this.#handleDelAfterDone();
+            await this.#handleDelAfterDone(skipCleanup);
         } catch (err) {
             progressTracker.stop();
             logger.error(`\n💥 运行中断: ${getErrorMessage(err)}`);
@@ -104,13 +109,17 @@ export class M3U8Downloader {
         }
     }
 
-    async #handleDelAfterDone(): Promise<void> {
+    async #handleDelAfterDone(skipCleanup: boolean): Promise<void> {
         // 是否清理临时文件夹
         if (config.enableDelAfterDone) {
+            if (skipCleanup) {
+                logger.log("🚨 检测到有视频片段未迁移成功，已自动跳过临时文件夹清理以防数据丢失。", { colorful: true });
+                return;
+            }
             // logger输出在临时文件夹，此时输出已无意义，因此先关闭日志流
             await logger.close();
             await fs.rm(config.tempDir, { recursive: true, force: true });
-            logger.log("🧹 已清理全部临时缓存分片");
+            logger.log("🧹 已清理临时文件夹及全部缓存分片");
         }
     }
 }

@@ -33,7 +33,7 @@ export interface DownloadOptions {
      */
     range: string;
     /**
-     * 分片迸发请求数
+     * 分片并发请求数
      * @default 16
      */
     concurrency: number;
@@ -54,7 +54,7 @@ export interface DownloadOptions {
      * * 下载分片后直接在内存中流式合并
      * * ℹ️ 可减少≈50%磁盘写入量
      * * 🚨 关于流式合并断点续传 详见 streamMergeFMP4, streamMergeForceMerge 说明
-     * * ⚠️ 最多额外占用 [迸发数*分片平均大小] 内存
+     * * ⚠️ 最多额外占用 [并发数*分片平均大小] 内存
      * * ⚠️ 如果为 true 则忽略: noMerge, forceMerge
      * @default false
      */

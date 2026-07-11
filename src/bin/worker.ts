@@ -1,7 +1,7 @@
 import pkg from "#package" with { type: "json" };
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
-import { waitBeforeExit } from "#src/common/utils.ts";
+import { safetyExit } from "#src/common/utils.ts";
 import { M3U8Downloader } from "#src/core/downloader/m3u8Downloader.ts";
 
 console.log(`MimicM3U8Downloader v${pkg.version}\n\n`);
@@ -23,10 +23,7 @@ export async function runWorker() {
     } catch {
         process.exitCode = 1;
     } finally {
-        await logger.close();
-        if (config.pauseAfterDone) {
-            await waitBeforeExit();
-        }
+        await safetyExit(config.pauseAfterDone);
     }
 }
 

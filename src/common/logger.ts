@@ -4,8 +4,13 @@ import fs from "fs";
 import path from "path";
 
 class Logger {
-    readonly #FILEPATH = `${config.tempDir}/${Date.now()}.log`;
-    readonly #stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
+    #FILEPATH!: string;
+    #stream!: fs.WriteStream;
+
+    init() {
+        this.#FILEPATH = `${config.tempDir}/${Date.now()}.log`;
+        this.#stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
+    }
 
     log(message: string, { print = true, log = true, colorful = false } = {}): void {
         const timeStamp = this.now();
@@ -24,6 +29,7 @@ class Logger {
             this.#stream.write(`[${timeStamp} log] ${message}\n`);
         }
     }
+
     warn(message: string, { print = true, log = true } = {}): void {
         const timeStamp = this.now();
         if (print) {
@@ -33,6 +39,7 @@ class Logger {
             this.#stream.write(`[${timeStamp} WARN] ${message}\n`);
         }
     }
+
     error(message: string, { print = true, log = true } = {}): void {
         const timeStamp = this.now();
         if (print) {
@@ -42,11 +49,16 @@ class Logger {
             this.#stream.write(`[${timeStamp} ERROR] ${message}\n`);
         }
     }
+
     print(message: string): void {
         const timeStamp = this.now();
         process.stdout.write(`\r\x1b[K${timeStamp} ${message}`);
     }
-    close(): Promise<void> {
+
+    async close(): Promise<void> {
+        if (!this.#stream) {
+            return;
+        }
         return new Promise((resolve) => {
             if (!this.#stream.writable) {
                 return resolve();
@@ -57,6 +69,7 @@ class Logger {
             });
         });
     }
+
     now(): string {
         return new Date().toLocaleTimeString("zh-CN", {
             hour12: false,
@@ -66,6 +79,7 @@ class Logger {
             fractionalSecondDigits: 3,
         });
     }
+
     file(fileName: string, data: string): void {
         fs.promises
             .writeFile(path.join(config.tempDir, fileName), data)
