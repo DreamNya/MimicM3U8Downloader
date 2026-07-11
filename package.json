@@ -1,6 +1,6 @@
 {
     "name": "mimicm3u8downloader",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "m3u8 downloader with browser tls fingerprint",
     "type": "module",
     "private": "true",
@@ -8,6 +8,7 @@
         "server": "node src/bin/server.ts",
         "registerUrlProtocol": "node src/bin/protocol.ts --register",
         "unregisterUrlProtocol": "node src/bin/protocol.ts --unregister",
+        "knip": "knip",
         "build": "bun run build.ts"
     },
     "author": "DreamNya",
@@ -30,6 +31,7 @@
         "@typescript-eslint/eslint-plugin": "^8.62.0",
         "@typescript-eslint/parser": "^8.62.0",
         "eslint": "^8.54.0",
+        "knip": "^6.26.0",
         "typescript": "^5.9.3"
     },
     "keywords": [
