@@ -82,8 +82,6 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 请确保本地环境中已经安装 FFmpeg，且正确配置**环境变量**
 
-（`fMP4` 模式需要同时安装 FFprobe）
-
 ---
 
 ## 📝 配置文件说明
@@ -113,7 +111,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | `browser`               | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]
 | `proxyUrl`              | string  | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`
 | `headers`               | object  | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）
-| `range`                 | string  | `""`       | 分片选择范围 详见 [range设置格式](#range设置格式)
+| `range`                 | string  | `""`       | 分片选择范围 详见 [[range设置格式](#range设置格式)]
 | `concurrency`           | number  | `16`       | 分片迸发请求数
 | `maxRetries`            | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
 | `timeout`               | number  | `60000`    | 网络请求的超时毫秒<br />（包含请求及连接时间，如果分片过大建议提高超时时间）
@@ -154,10 +152,13 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | **备注** | 无 | 仅**断点续传**时<br />如果`streamMergeForceMerge`<br />为`false`：生成多个独立mp4片段<br />为`true`：将所有片段合并为完整mp4 | 该模式仍在测试中\*\*<br>可能存在未知Bug<br>欢迎在 ISSUE 中反馈
 
 > \* 仅在下载过程中发生网络错误、连接异常等下载流中断时支持断点续传继续下载（此时FFmpeg合并的均为干净数据）
+>
 > 若发生校验/合并异常则不支持断点续传（说明此时FFmpeg合并数据已被污染）
+>
 > 受Node.js限制，如果模块被用户主动停止/退出也不支持断点续传（无法通知并等待FFmpeg进行EOL截断）
 >
 > \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况
+>
 > 详见 [src/core/fMP4.ts](src/core/fMP4.ts)
 
 #### 下载模式工作原理
@@ -166,8 +167,11 @@ https://wwbwh.lanzouw.com/b01d72je4h
 * 流式实时合并：流式下载分片 ➔ **未合并分片暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式合并写入最终视频**  
 
 > 默认（传统）模式，先将分片下载到磁盘缓存再进行合并，这样会进行2倍读写I/O
+>
 > 流式实时合并模式，会将分片下载到内存，然后直接通过管道传递给FFmpeg进行合并且流式写入磁盘，这样则减少了额外的读写I/O
+>
 > 流式实时合并最多将[迸发数]个分片暂存在内存中（而非所有分片），无需担心内存溢出
+>
 > 假设迸发数为16、分片平均大小500KB，则最多额外占用16*500KB=8MB内存
 
 #### range设置格式
