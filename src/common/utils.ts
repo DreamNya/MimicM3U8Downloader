@@ -42,14 +42,23 @@ export function formatTime(rawS: number): string {
 
 /**
  * 格式化文件名
+ * @param {unknown} name 待处理的文件名，默认外部配置不可信
+ * @returns {string} 格式化后的文件名；兜底：String(Date.now())
  */
-export function sanitizeFilename(name: string): string {
-    return name
+export function sanitizeFilename(name: unknown): string {
+    if (typeof name !== "string") {
+        return String(Date.now());
+    }
+
+    const sanitized = name
         .trim()
-        .replace(/[<>:"/\\|?*]/g, "_")
+        // eslint-disable-next-line no-control-regex
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "_")
         .replace(/[. ]+$/, "")
         .replace(/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i, "_$&")
         .slice(0, 255);
+
+    return sanitized || String(Date.now());
 }
 
 export function getErrorMessage(error: unknown): string {
