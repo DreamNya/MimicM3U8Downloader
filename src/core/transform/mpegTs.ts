@@ -8,7 +8,7 @@ const PSI_SCAN_PACKETS = 64;
 const MAX_PSI_SECTION_SIZE = 1024;
 
 /**
- * 为了验证位于搜索范围末尾的候选位置，还需要额外缓存后续 TS 包。
+ * 为了验证位于搜索范围末尾的候选位置，还需要额外缓存后续 TS 包
  */
 const MAX_PROBE_BYTES = SEARCH_LIMIT + PSI_SCAN_PACKETS * TS_PACKET_SIZE;
 
@@ -34,18 +34,13 @@ export interface MpegTsNormalizeResult {
 
 export interface MpegTsPrefixTransformOptions {
     /**
-     * 完成判断后调用。
+     * 完成判断后调用
      *
-     * 0：原始数据已经从 MPEG-TS 开始。
-     * > 0：已删除对应长度的伪装前缀。
-     * -1：没有检测到 MPEG-TS，数据保持不变。
+     * 0：原始数据已经从 MPEG-TS 开始
+     * > 0：已删除对应长度的伪装前缀
+     * -1：没有检测到 MPEG-TS，数据保持不变
      */
     onDetected?: (offset: number) => void | Promise<void>;
-
-    /**
-     * 图片文件头之后没有找到 MPEG-TS 时是否报错。
-     */
-    rejectImageWithoutTs?: boolean;
 }
 
 function parseTsHeader(data: Uint8Array, position: number): TsPacketHeader | undefined {
@@ -58,14 +53,14 @@ function parseTsHeader(data: Uint8Array, position: number): TsPacketHeader | und
     const byte1 = data[position + 1]!;
     const byte3 = data[position + 3]!;
 
-    // transport_error_indicator 必须为 0。
+    // transport_error_indicator 必须为 0
     if ((byte1 & 0x80) !== 0) {
         return;
     }
 
     const adaptationFieldControl = (byte3 >> 4) & 0x03;
 
-    // 00 为保留值。
+    // 00 为保留值
     if (adaptationFieldControl === 0) {
         return;
     }
@@ -95,10 +90,8 @@ function parseTsHeader(data: Uint8Array, position: number): TsPacketHeader | und
 
 function countConsecutivePackets(data: Uint8Array, offset: number, limit = STRONG_SYNC_PACKETS): number {
     let count = 0;
-
     for (; count < limit; count++) {
         const position = offset + count * TS_PACKET_SIZE;
-
         if (!parseTsHeader(data, position)) {
             break;
         }
@@ -108,9 +101,8 @@ function countConsecutivePackets(data: Uint8Array, offset: number, limit = STRON
 }
 
 /**
- * 收集指定 PID 的一个完整 PSI Section。
- *
- * 支持 PAT/PMT 跨越多个 TS 包。
+ * 收集指定 PID 的一个完整 PSI Section
+ * 支持 PAT/PMT 跨越多个 TS 包
  */
 function readPsiSection(data: Uint8Array, tsOffset: number, pid: number): Uint8Array | undefined {
     const sectionBuffer = new Uint8Array(MAX_PSI_SECTION_SIZE);
@@ -175,9 +167,8 @@ function readPsiSection(data: Uint8Array, tsOffset: number, pid: number): Uint8A
 }
 
 /**
- * MPEG-2 PSI 使用 CRC-32/MPEG-2。
- *
- * 将包含 CRC 字段的完整 Section 计算后，结果应为 0。
+ * MPEG-2 PSI 使用 CRC-32/MPEG-2
+ * 将包含 CRC 字段的完整 Section 计算后，结果应为 0
  */
 function hasValidPsiCrc(section: Uint8Array): boolean {
     let crc = 0xffffffff;
@@ -218,7 +209,7 @@ function parsePat(section: Uint8Array | undefined): PatProgram[] | undefined {
     for (let position = 8; position + 4 <= programEnd; position += 4) {
         const programNumber = (section[position]! << 8) | section[position + 1]!;
 
-        // program_number === 0 指向 NIT，不是 PMT。
+        // program_number === 0 指向 NIT，不是 PMT
         if (programNumber === 0) {
             continue;
         }
@@ -328,7 +319,7 @@ export function hasImageFileSignature(data: Uint8Array): boolean {
 }
 
 /**
- * 在前 64 KiB 中查找可信的 MPEG-TS 起始位置。
+ * 在前 64 KiB 中查找可信的 MPEG-TS 起始位置
  */
 export function findMpegTsOffset(data: Uint8Array): number {
     const maxOffset = Math.min(SEARCH_LIMIT - 1, data.length - MIN_SYNC_PACKETS * TS_PACKET_SIZE);
@@ -350,22 +341,22 @@ export function findMpegTsOffset(data: Uint8Array): number {
             continue;
         }
 
-        // PAT + PMT 是最高可信度。
+        // PAT + PMT 是最高可信度
         if (hasValidPatAndPmt(data, offset)) {
             return offset;
         }
 
-        // 文件本身从 TS 开始，5 个连续包已经足够。
+        // 文件本身从 TS 开始，5 个连续包已经足够
         if (offset === 0) {
             return 0;
         }
 
-        // 已知图片伪装头后找到连续 TS 包。
+        // 已知图片伪装头后找到连续 TS 包
         if (imagePrefix) {
             return offset;
         }
 
-        // 未知前缀要求更多连续 TS 包。
+        // 未知前缀要求更多连续 TS 包
         if (packetCount >= STRONG_SYNC_PACKETS) {
             return offset;
         }
@@ -375,14 +366,12 @@ export function findMpegTsOffset(data: Uint8Array): number {
 }
 
 /**
- * 用于已经完整保存在内存中的分片。
- *
- * Buffer.subarray() 不复制底层数据。
+ * 处理流式下载分片
  */
-export function normalizeMpegTsBuffer(data: Buffer, rejectImageWithoutTs = true): MpegTsNormalizeResult {
+export function normalizeMpegTsBuffer(data: Buffer): MpegTsNormalizeResult {
     const offset = findMpegTsOffset(data);
 
-    if (offset < 0 && rejectImageWithoutTs && hasImageFileSignature(data)) {
+    if (offset < 0 && hasImageFileSignature(data)) {
         throw new Error("分片具有图片文件头，但在前 64 KiB 内未找到有效 MPEG-TS");
     }
 
@@ -394,13 +383,11 @@ export function normalizeMpegTsBuffer(data: Buffer, rejectImageWithoutTs = true)
 }
 
 /**
- * 用于传统下载模式。
- *
- * 仅缓存探测窗口，完成判断后直接进入透传状态。
+ * 处理传统下载模式
+ * 仅缓存探测窗口，完成判断后直接进入透传状态
  */
 export class MpegTsPrefixTransform extends Transform {
     readonly #onDetected: MpegTsPrefixTransformOptions["onDetected"];
-    readonly #rejectImageWithoutTs: boolean;
 
     #chunks: Buffer[] = [];
     #bufferedLength = 0;
@@ -410,7 +397,6 @@ export class MpegTsPrefixTransform extends Transform {
         super();
 
         this.#onDetected = options.onDetected;
-        this.#rejectImageWithoutTs = options.rejectImageWithoutTs ?? true;
     }
 
     override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
@@ -420,11 +406,8 @@ export class MpegTsPrefixTransform extends Transform {
         }
 
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-
         const remainingProbeLength = MAX_PROBE_BYTES - this.#bufferedLength;
-
         const probeChunk = buffer.subarray(0, Math.max(0, remainingProbeLength));
-
         const remainder = buffer.subarray(probeChunk.length);
 
         if (probeChunk.length > 0) {
@@ -438,9 +421,7 @@ export class MpegTsPrefixTransform extends Transform {
         }
 
         const probe = Buffer.concat(this.#chunks, this.#bufferedLength);
-
         const offset = findMpegTsOffset(probe);
-
         if (offset >= 0 || this.#bufferedLength >= MAX_PROBE_BYTES) {
             this.#completeDetection(probe, remainder, offset, callback);
             return;
@@ -456,18 +437,16 @@ export class MpegTsPrefixTransform extends Transform {
         }
 
         const probe = Buffer.concat(this.#chunks, this.#bufferedLength);
-
         this.#completeDetection(probe, Buffer.alloc(0), findMpegTsOffset(probe), callback);
     }
 
     #completeDetection(probe: Buffer, remainder: Buffer, offset: number, callback: TransformCallback): void {
-        if (offset < 0 && this.#rejectImageWithoutTs && hasImageFileSignature(probe)) {
+        if (offset < 0 && hasImageFileSignature(probe)) {
             callback(new Error("分片具有图片文件头，但在前 64 KiB 内未找到有效 MPEG-TS"));
             return;
         }
 
         const output = offset > 0 ? probe.subarray(offset) : probe;
-
         Promise.resolve(this.#onDetected?.(offset)).then(() => {
             this.#decided = true;
             this.#chunks = [];
