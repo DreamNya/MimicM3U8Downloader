@@ -20,14 +20,14 @@ export async function startNormalDownload(
     progressTracker.start(segments.length);
     const startIndex = isResumable || mapInfo ? 0 : 1;
     // 缓存合并 并发下载并缓存分片
-    await downloadAllSegments(segments.slice(startIndex));
+    await downloadAllSegments(segments.slice(startIndex), !mapInfo);
     progressTracker.stop();
 
     // 合并缓存的分片
     await handleDownloadCompletion(mapInfo, mapPath);
 }
 
-async function downloadAllSegments(segments: Segment[]): Promise<void> {
+async function downloadAllSegments(segments: Segment[], sanitizeMpegTs: boolean): Promise<void> {
     logger.log(`等待下载完成...`, { colorful: true });
     const limit = pLimit(config.concurrency);
 
@@ -44,6 +44,7 @@ async function downloadAllSegments(segments: Segment[]): Promise<void> {
                 fileName,
                 maxRetries: config.maxRetries,
                 keyInfo,
+                sanitizeMpegTs,
             });
             if (result.ok) {
                 progressTracker.add("success", fileName);

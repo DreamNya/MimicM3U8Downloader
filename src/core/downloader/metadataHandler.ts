@@ -34,6 +34,7 @@ export async function handleMapAndInfo(
                 headers,
                 maxRetries: config.maxRetries,
                 keyInfo: mapInfo.keyInfo,
+                sanitizeMpegTs: false,
             });
             if (!result.ok) {
                 throw new Error("MAP 文件下载失败");
@@ -50,6 +51,7 @@ export async function handleMapAndInfo(
                     fileName: firstSegmentName,
                     maxRetries: config.maxRetries,
                     keyInfo: firstSegment.keyInfo,
+                    sanitizeMpegTs: true,
                 });
                 if (result.ok) {
                     progressTracker.add("success", firstSegmentName);

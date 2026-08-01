@@ -30,7 +30,7 @@ if (!target || !targetMaps.includes(target)) {
 }
 
 console.log(`\n🚀 [自动注入模式] 正在编译目标平台: ${target}...`);
-const targetDir = target.replace("bun", `MimicM3U8Downloader-${version}`);
+const targetDir = target.replace("bun", `MimicM3U8Downloader-v${version}`);
 
 // 让 Bun 自动解析并打包所有依赖（包括 .node 二进制模块）
 await Bun.build({

@@ -3,6 +3,7 @@ import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, sleep } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
+import { normalizeMpegTsBuffer } from "#src/core/transform/mpegTs.ts";
 import type { ImpitOptions } from "impit";
 import { createSegmentStream } from "./crypto.ts";
 import type { ProgressState } from "./downloader.ts";
@@ -15,6 +16,7 @@ interface DownloadToBufferOptions {
     maxRetries: number;
     keyInfo?: Segment["keyInfo"];
     signal?: AbortSignal;
+    sanitizeMpegTs?: boolean;
 }
 
 interface StreamPipelineOptions {
@@ -26,13 +28,14 @@ interface StreamPipelineOptions {
     progress?: { count: number };
     startIndex?: number;
     externalSignal?: AbortSignal;
+    sanitizeMpegTs?: boolean;
 }
 
 /**
  * 流式下载单个分片到内存 Buffer
  */
 async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount = 0): Promise<Buffer> {
-    const { url, fileName, headers = {}, maxRetries, keyInfo, signal } = info;
+    const { url, fileName, headers = {}, maxRetries, keyInfo, signal, sanitizeMpegTs = false } = info;
     const progressState: ProgressState = { bytes: 0 };
 
     try {
@@ -57,7 +60,19 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
             progressState.bytes += buf.length;
         }
 
-        return Buffer.concat(chunks);
+        const downloadedBuffer = Buffer.concat(chunks);
+
+        if (!sanitizeMpegTs) {
+            return downloadedBuffer;
+        }
+
+        const result = normalizeMpegTsBuffer(downloadedBuffer);
+
+        if (result.offset > 0) {
+            logger.warn(`分片 [${fileName}] 检测到伪装前缀，已删除 ${result.offset} 字节`, { print: false });
+        }
+
+        return result.data;
     } catch (err) {
         progressTracker.rollbackBytes(progressState.bytes);
 
@@ -118,6 +133,7 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
                 maxRetries,
                 keyInfo: seg.keyInfo,
                 signal,
+                sanitizeMpegTs: options.sanitizeMpegTs,
             })
                 .then((buf) => {
                     progressTracker.add("success", fileName);

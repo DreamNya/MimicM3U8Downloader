@@ -2,9 +2,9 @@ import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage, safetyExit } from "#src/common/utils.ts";
 import { concatMP4Parts, formatFFmpegPath, startStreamMerge, type SegmentInfo } from "#src/core/ffmpeg.ts";
-import { checkTimescaleMap, completeFMP4Merge, MoofTransform, TimestampAdjuster } from "#src/core/fMP4.ts";
 import type { Segment } from "#src/core/m3u8Parser.ts";
 import { pipeSegmentsToStream, writeStreamMergeState, type StreamMergeState } from "#src/core/segment/index.ts";
+import { checkTimescaleMap, completeFMP4Merge, MoofTransform, TimestampAdjuster } from "#src/core/transform/fMP4.ts";
 import { createWriteStream, type WriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -117,6 +117,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
             progress: streamProgress,
             startIndex,
             externalSignal: userAbortController.signal,
+            sanitizeMpegTs: !isMapFile,
         })
             .then(() => {
                 if (stdin.writable) {
