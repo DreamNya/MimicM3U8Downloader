@@ -1,14 +1,15 @@
-import { config } from "#src/common/cli.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import fs from "fs";
 import path from "path";
 
 class Logger {
+    #tempDir!: string;
     #FILEPATH!: string;
     #stream!: fs.WriteStream;
 
-    init() {
-        this.#FILEPATH = `${config.tempDir}/${Date.now()}.log`;
+    init(tempDir: string) {
+        this.#tempDir = tempDir;
+        this.#FILEPATH = path.join(tempDir, `${Date.now()}.log`);
         this.#stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
     }
 
@@ -82,7 +83,7 @@ class Logger {
 
     file(fileName: string, data: string): void {
         fs.promises
-            .writeFile(path.join(config.tempDir, fileName), data)
+            .writeFile(path.join(this.#tempDir, fileName), data)
             .catch((err) => this.error(`文件 [${fileName}] 写入失败：${getErrorMessage(err)}`));
     }
 }

@@ -41,7 +41,7 @@ export const config: Readonly<DownloadRuntimeConfig> = await initConfig().catch(
     return await safetyExit(true);
 });
 
-logger.init();
+logger.init(config.tempDir);
 
 async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
     // 解析命令行参数
