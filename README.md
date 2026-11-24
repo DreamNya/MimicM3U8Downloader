@@ -10,20 +10,20 @@ GitHub: <https://github.com/DreamNya/MimicM3U8Downloader>
 
 ## ✨ 项目特性
 
-* **TLS 指纹混淆**：模拟 Chrome 等主流浏览器的 TLS 握手特征，绕过 Cloudflare 防爬校验
-* **多级 M3U8 嵌套解析**：支持 Master Playlist 递归解析，自动提取 BaseURL 并精准锁定最高清晰度视频流
-* **动态 AES 解密**：流式解密标准 AES-128 加密分片，支持多密钥自动识别与平滑切换
-* **自动处理伪装字节**：下载非标准加密分片时，尝试全自动处理伪装字节（文件头）
-* **精准区间下载**： 支持解析并下载指定范围（Range）的分片，满足按需下载需求
-* **流式断点续传**：集成分片完整性校验机制，支持中断进度秒传，大幅减少重复磁盘 I/O 损耗
-* **多线程高效并发**：采用多线程异步并发请求，最大化利用网络带宽，提升下载吞吐量
-* **高性能流式合并**：支持分片内存暂存并实时写入 FFmpeg 管道，跳过中间产物损耗，降低约 50% 磁盘 I/O 开销，有效提升合并效率并延长 SSD 使用寿命。
-* **FFmpeg 自动封装**：分片下载完成后自动调用 FFmpeg，实现无损、快速的合并与封装
-* **三模一体化运行**
+- **TLS 指纹混淆**：模拟 Chrome 等主流浏览器的 TLS 握手特征，绕过 Cloudflare 防爬校验
+- **多级 M3U8 嵌套解析**：支持 Master Playlist 递归解析，自动提取 BaseURL 并精准锁定最高清晰度视频流
+- **动态 AES 解密**：流式解密标准 AES-128 加密分片，支持多密钥自动识别与平滑切换
+- **自动处理伪装字节**：下载非标准加密分片时，尝试全自动处理伪装字节（文件头）
+- **精准区间下载**： 支持解析并下载指定范围（Range）的分片，满足按需下载需求
+- **流式断点续传**：集成分片完整性校验机制，支持中断进度秒传，大幅减少重复磁盘 I/O 损耗
+- **多线程高效并发**：采用多线程异步并发请求，最大化利用网络带宽，提升下载吞吐量
+- **高性能流式合并**：支持分片内存暂存并实时写入 FFmpeg 管道，跳过中间产物损耗，降低约 50% 磁盘 I/O 开销，有效提升合并效率并延长 SSD 使用寿命。
+- **FFmpeg 自动封装**：分片下载完成后自动调用 FFmpeg，实现无损、快速的合并与封装
+- **三模一体化运行**
 
-  1. **CLI 模式**：直接通过 Node.js 调用下载器
-  2. **URL Protocol 协议**：支持浏览器或外部网页通过URL Protocol 协议唤醒下载器
-  3. **HTTP 本地服务**：通过本地服务器 http 请求，一键唤醒下载器
+    1. **CLI 模式**：直接通过 Node.js 调用下载器
+    2. **URL Protocol 协议**：支持浏览器或外部网页通过URL Protocol 协议唤醒下载器
+    3. **HTTP 本地服务**：通过本地服务器 http 请求，一键唤醒下载器
 
 ### 预览
 
@@ -35,8 +35,8 @@ GitHub: <https://github.com/DreamNya/MimicM3U8Downloader>
 
 本项目有2种安装/使用方式可选，可根据自己实际情况选择
 
-* Node.js模式需要在本地环境中安装Node.js，但可直接运行模块
-* 编译模式无需安装Node.js，但编译文件解压后文件体积较大
+- Node.js模式需要在本地环境中安装Node.js，但可直接运行模块
+- 编译模式无需安装Node.js，但编译文件解压后文件体积较大
 
 ### Node.js模式
 
@@ -52,13 +52,13 @@ npm install
 
 下载编译后的文件
 
-* **GitHub Release（多平台）**
+- **GitHub Release（多平台）**
 
 ```text
 https://github.com/DreamNya/MimicM3U8Downloader/releases
 ```
 
-* **蓝奏云分流（仅windows）**
+- **蓝奏云分流（仅windows）**
 
 ```text
 https://wwbwh.lanzouw.com/b01d72je4h
@@ -73,7 +73,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 > 编译模式可跳过
 
-安装 **Node.js v23.6.0 或更高版本**  (推荐: Node.js v24+ / latest LTS)
+安装 **Node.js v23.6.0 或更高版本** (推荐: Node.js v24+ / latest LTS)
 
 （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
 
@@ -95,9 +95,9 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 本地 http 服务器配置参数
 
-| 参数              | 类型    | 默认值  | 说明
-| ----------------- | ------- | --------| -------------------------------------------------
-| `Port`            | string  | `12345` | 本地 http 服务监听端口
+| 参数   | 类型   | 默认值  | 说明                   |
+| ------ | ------ | ------- | ---------------------- |
+| `Port` | string | `12345` | 本地 http 服务监听端口 |
 
 ---
 
@@ -107,25 +107,25 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 下载器全局配置参数
 
-| 参数                    | 类型    | 默认值     | 说明
-| --------------------    | ------- | ---------- | -------------------------------------------------
-| `browser`               | string  | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]
-| `proxyUrl`              | string  | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`
-| `headers`               | object  | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）
-| `range`                 | string  | `""`       | 分片选择范围 详见 [[range设置格式](#range设置格式)]
-| `concurrency`           | number  | `16`       | 分片并发请求数
-| `maxRetries`            | number  | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）
-| `timeout`               | number  | `60000`    | 网络请求的超时毫秒<br />（包含请求及连接时间，如果分片过大建议提高超时时间）
-| `streamMerge`           | boolean | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）
-| `streamMergeFMP4`       | boolean | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）
-| `streamMergeForceMerge` | boolean | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件
-| `noMerge`               | boolean | `false`    | 分片下载完毕不自动合并
-| `forceMerge`            | boolean | `false`    | 下分片下载不完整时强制合并
-| `skipFailedSegments`    | boolean | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务
-| `maxFailedSegments`     | number \| string | `0` | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限
-| `enableDelAfterDone`    | boolean | `false`    | 下载完毕后删除临时文件夹
-| `pauseAfterDone`        | boolean | `true`     | 下载完毕后暂停交互窗口
-| `debug`                 | boolean | `false`    | 记录debug中间产物
+| 参数                    | 类型             | 默认值     | 说明                                                                                                                             |
+| ----------------------- | ---------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `browser`               | string           | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]                                        |
+| `proxyUrl`              | string           | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`                                                                                    |
+| `headers`               | object           | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）                                                                |
+| `range`                 | string           | `""`       | 分片选择范围 详见 [[range设置格式](#range设置格式)]                                                                              |
+| `concurrency`           | number           | `16`       | 分片并发请求数                                                                                                                   |
+| `maxRetries`            | number           | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）                                                                                  |
+| `timeout`               | number           | `60000`    | 网络请求的超时毫秒<br />（包含请求及连接时间，如果分片过大建议提高超时时间）                                                     |
+| `streamMerge`           | boolean          | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）             |
+| `streamMergeFMP4`       | boolean          | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）                                                              |
+| `streamMergeForceMerge` | boolean          | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件                                                                              |
+| `noMerge`               | boolean          | `false`    | 分片下载完毕不自动合并                                                                                                           |
+| `forceMerge`            | boolean          | `false`    | 下分片下载不完整时强制合并                                                                                                       |
+| `skipFailedSegments`    | boolean          | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务                                                      |
+| `maxFailedSegments`     | number \| string | `0`        | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限 |
+| `enableDelAfterDone`    | boolean          | `false`    | 下载完毕后删除临时文件夹                                                                                                         |
+| `pauseAfterDone`        | boolean          | `true`     | 下载完毕后暂停交互窗口                                                                                                           |
+| `debug`                 | boolean          | `false`    | 记录debug中间产物                                                                                                                |
 
 ---
 
@@ -133,11 +133,11 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 每次调用下载器时必须传递的参数
 
-| 参数             | 类型    | 是否必须传递   | 说明
-| ---------------- | ------- | -------------- | -------------------------------------------------
-| `url`            | string  | 必须           | m3u8 请求地址
-| `saveName`       | string  | 必须           | 视频存储文件名（不包括后缀）<br>（如果文件名不合法则降级为时间戳）
-| `workDir`        | number  | 必须           | 视频存储目录（临时文件也会存储在该目录下）
+| 参数       | 类型   | 是否必须传递 | 说明                                                               |
+| ---------- | ------ | ------------ | ------------------------------------------------------------------ |
+| `url`      | string | 必须         | m3u8 请求地址                                                      |
+| `saveName` | string | 必须         | 视频存储文件名（不包括后缀）<br>（如果文件名不合法则降级为时间戳） |
+| `workDir`  | number | 必须         | 视频存储目录（临时文件也会存储在该目录下）                         |
 
 其余非必须传递参数与下载器全局配置参数规则相同，如果传递则在该次调用中覆盖全局配置中对应的配置
 
@@ -145,27 +145,27 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 #### 下载模式对比
 
-| 模式对比 | 缓存后再合并（默认模式） | 流式实时合并 | 流式实时合并(fMP4)
-| -------- | ---------------------- | ---------------------- | --------
-| **配置项** | `streamMerge: false` | `streamMerge: true`<br/>`streamMergeFMP4: false` | `streamMerge: true`<br>`streamMergeFMP4: true`
-| **视频格式** | 标准mp4 | 标准mp4 | fMP4
-| **磁盘写入** | 总是 **2 倍** 视频大小 | 正常下载：**1 倍** 视频大小<br>断点续传不合并：**1 倍** 视频大小<br>断点续传后合并：**2 倍** 视频大小 | 总是 **1 倍** 视频大小
-| **断点续传** | **支持** | **有限支持*** | **有限支持***
-| **内存占用** | 无额外占用 | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存 | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存
-| **备注** | 无 | 仅**断点续传**时<br />如果`streamMergeForceMerge`<br />为`false`：生成多个独立mp4片段<br />为`true`：将所有片段合并为完整mp4 | 该模式仍在测试中\*\*<br>可能存在未知Bug<br>欢迎在 ISSUE 中反馈
+| 模式对比     | 缓存后再合并（默认模式） | 流式实时合并                                                                                                                 | 流式实时合并(fMP4)                                             |
+| ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **配置项**   | `streamMerge: false`     | `streamMerge: true`<br/>`streamMergeFMP4: false`                                                                             | `streamMerge: true`<br>`streamMergeFMP4: true`                 |
+| **视频格式** | 标准mp4                  | 标准mp4                                                                                                                      | fMP4                                                           |
+| **磁盘写入** | 总是 **2 倍** 视频大小   | 正常下载：**1 倍** 视频大小<br>断点续传不合并：**1 倍** 视频大小<br>断点续传后合并：**2 倍** 视频大小                        | 总是 **1 倍** 视频大小                                         |
+| **断点续传** | **支持**                 | **有限支持***                                                                                                                | **有限支持***                                                  |
+| **内存占用** | 无额外占用               | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存                                                                            | 最多额外占用<br /> `[并发数 * 分片平均大小]` 内存              |
+| **备注**     | 无                       | 仅**断点续传**时<br />如果`streamMergeForceMerge`<br />为`false`：生成多个独立mp4片段<br />为`true`：将所有片段合并为完整mp4 | 该模式仍在测试中\*\*<br>可能存在未知Bug<br>欢迎在 ISSUE 中反馈 |
 
 > \* 仅在下载过程中发生网络错误、连接异常等下载流中断时支持断点续传继续下载（此时FFmpeg合并的均为干净数据）  
 > \- 若发生校验/合并异常则不支持断点续传（说明此时FFmpeg合并数据已被污染）  
 > \- 受Node.js限制，如果模块被用户强行退出将不支持断点续传（无法通知并等待FFmpeg进行EOL截断）  
-> \- 如需手动中断下载，请在CLI中按下Ctrl+C，如此模块可以安全退出并保留断点  
+> \- 如需手动中断下载，请在CLI中按下Ctrl+C，如此模块可以安全退出并保留断点
 >
 > \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况  
 > \- 详见 [src/core/transform/fMP4.ts](src/core/transform/fMP4.ts)
 
 #### 下载模式工作原理
 
-* 缓存后再合并：流式下载分片 ➔ **流式写入硬盘缓存**  ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并 ➔ **写入最终视频**
-* 流式实时合并：流式下载分片 ➔ **未合并分片暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式合并写入最终视频**  
+- 缓存后再合并：流式下载分片 ➔ **流式写入硬盘缓存** ➔ 读取所有缓存 ➔ 调用 FFmpeg 合并 ➔ **写入最终视频**
+- 流式实时合并：流式下载分片 ➔ **未合并分片暂存内存** ➔ 按顺序推入 FFmpeg 流 ➔ **实时流式合并写入最终视频**
 
 > 默认（传统）模式，先将分片下载到磁盘缓存再进行合并，这样会进行2倍读写I/O
 >
@@ -177,17 +177,17 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 *以下格式2选1，不可混用
 
-| 范围分类         | 示例格式                                 | 实际下载范围 / 行为说明
-| ---------------- | ---------------------------------------- | ------------------------------------------
-| **索引格式**     | `"123,128,130"`                          | 仅下载索引为 123、128、130 的分片（多分片用 `,` 分割）
-| (数字索引)       | `"120-"`                                 | 下载从第 120 分片开始的所有后续分片
-|                  | `"120-200"`                              | 下载闭区间 120 ~ 200 之间的所有分片
-|                  | `"-200"`                                 | 下载从开头第 0 分片到第 200 分片的所有分片
-|                  | `"110,120-130,150-180,185"`              | 支持复合区间（用`,`分隔）： <br> 同时下载 110、120～130、150～180 以及 185 分片
-| **时间轴格式**   | `"00:00:28-"`                            | 下载视频 28 秒之后的所有分片
-| (时间文本)       | `"-00:10:00"`                            | 下载视频 10 分钟之前的所有分片
-|                  | `"00:00:28-00:10:00"`                    | 下载视频 28 秒到 10 分钟之间的所有分片
-|                  | `"00:00:28-00:10:00,00:15:00-00:16:00"`  | 支持复合时间（用`,`分隔）： <br> 下载 28 秒～10 分钟 和 15 分钟～16 分钟内的所有分片
+| 范围分类       | 示例格式                                | 实际下载范围 / 行为说明                                                              |
+| -------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
+| **索引格式**   | `"123,128,130"`                         | 仅下载索引为 123、128、130 的分片（多分片用 `,` 分割）                               |
+| (数字索引)     | `"120-"`                                | 下载从第 120 分片开始的所有后续分片                                                  |
+|                | `"120-200"`                             | 下载闭区间 120 ~ 200 之间的所有分片                                                  |
+|                | `"-200"`                                | 下载从开头第 0 分片到第 200 分片的所有分片                                           |
+|                | `"110,120-130,150-180,185"`             | 支持复合区间（用`,`分隔）： <br> 同时下载 110、120～130、150～180 以及 185 分片      |
+| **时间轴格式** | `"00:00:28-"`                           | 下载视频 28 秒之后的所有分片                                                         |
+| (时间文本)     | `"-00:10:00"`                           | 下载视频 10 分钟之前的所有分片                                                       |
+|                | `"00:00:28-00:10:00"`                   | 下载视频 28 秒到 10 分钟之间的所有分片                                               |
+|                | `"00:00:28-00:10:00,00:15:00-00:16:00"` | 支持复合时间（用`,`分隔）： <br> 下载 28 秒～10 分钟 和 15 分钟～16 分钟内的所有分片 |
 
 #### 配置优先级
 
@@ -209,20 +209,20 @@ Payload 格式参考
 
 ```json
 {
-  "url": "https://example.com/target.m3u8",
-  "saveName": "视频保存名称",
-  "workDir": "D:/m3u8",
-  "headers": {
-    "Referer": "https://example.com/",
-    "Origin": "https://example.com/",
-    "Cookie": "XXX",
-  }
+    "url": "https://example.com/target.m3u8",
+    "saveName": "视频保存名称",
+    "workDir": "D:/m3u8",
+    "headers": {
+        "Referer": "https://example.com/",
+        "Origin": "https://example.com/",
+        "Cookie": "XXX"
+    }
 }
 ```
 
 中文Base64编码参考
 
-``` ts
+```ts
 function BTOA(str: string): string {
     return btoa(String.fromCodePoint(...new TextEncoder().encode(str)));
 }
@@ -233,15 +233,15 @@ function BTOA(str: string): string {
 ### 模式一：CLI 命令行
 
 直接在CLI中通过`--`传递参数  
-*--headers必须为标准JSON*
+_--headers必须为标准JSON_
 
-* **Node.js模式**
+- **Node.js模式**
 
 ```bash
 node src/bin/worker.ts --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\",\"Origin\":\"https://example.com/\"}'
 ```
 
-* **编译模式**
+- **编译模式**
 
 ```bash
 MimicM3U8Downloader --url "https://example.com/target.m3u8" --saveName "视频保存名称" --workDir "D:/m3u8" --headers "{\"Referer\":\"https://example.com/\",\"Origin\":\"https://example.com/\"}'
@@ -271,7 +271,7 @@ m3u8mimic://eyJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tL3RhcmdldC5tM3U4Iiwic2F2ZU5hbWUi
 
 > 仅需注册一次、无需管理员权限、模块会自动配置调用路径
 
-* **Node.js模式**
+- **Node.js模式**
 
 注册/更新协议
 
@@ -285,7 +285,7 @@ npm run registerUrlProtocol
 npm run unregisterUrlProtocol
 ```
 
-* **编译模式**
+- **编译模式**
 
 注册/更新协议
 
@@ -315,13 +315,13 @@ http://127.0.0.1:12345
 
 #### 启动服务
 
-* **Node.js模式**
+- **Node.js模式**
 
 ```bash
 npm run server
 ```
 
-* **编译模式**
+- **编译模式**
 
 > 不要传递任何 -- 参数，否则视为CLI命令行模式直接调用下载模块（windows系统中直接双击运行即可）
 
@@ -333,15 +333,15 @@ MimicM3U8Downloader
 
 ```javascript
 GM_xmlhttpRequest({
-    url: 'http://127.0.0.1:12345',
-    method: 'POST',
+    url: "http://127.0.0.1:12345",
+    method: "POST",
     headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
     },
     data: JSON.stringify({
-        url: 'https://example.com/target.m3u8',
-        saveName: '视频保存名称',
-        workDir: 'D:/m3u8',
+        url: "https://example.com/target.m3u8",
+        saveName: "视频保存名称",
+        workDir: "D:/m3u8",
         headers: {
             Referer: location.href,
             Origin: location.origin,
@@ -391,9 +391,9 @@ GitHub Action（多平台）
 
 ### TODO
 
-* [ ] SAMPLE-AES解密 （不含DRM）
-* [ ] 解析本地m3u8
-* [ ] 前端GUI
+- [ ] SAMPLE-AES解密 （不含DRM）
+- [ ] 解析本地m3u8
+- [ ] 前端GUI
 
 ---
 

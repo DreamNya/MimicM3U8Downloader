@@ -37,7 +37,7 @@ function openStreamPart(filePath: string, useFMP4: boolean, previous?: FMP4Check
     return {
         filePath,
         write(buffer: Buffer): Promise<void> {
-            return new Promise((resolve, reject) => stdin.write(buffer, (err) => err ? reject(err) : resolve()));
+            return new Promise((resolve, reject) => stdin.write(buffer, (err) => (err ? reject(err) : resolve())));
         },
         async finish(): Promise<FMP4Checkpoint | undefined> {
             stdin.end();
@@ -151,9 +151,8 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
             if ("error" in result) {
                 // 待确认的失败也占用本轮容差，避免连续失败绕过上限。
                 if (failureLimit === undefined || previouslySkipped + skipCandidates.length >= failureLimit) {
-                    downloadError = failureLimit === undefined
-                        ? result.error
-                        : segmentFailureLimitError(failureLimit, result.error);
+                    downloadError =
+                        failureLimit === undefined ? result.error : segmentFailureLimitError(failureLimit, result.error);
                     break;
                 }
 
@@ -217,7 +216,8 @@ async function renameAllParts(allParts: string[], stateFilePath: string): Promis
     for (const part of allParts) {
         const fileName = path.basename(part);
         const outputFile = path.join(config.workDir, `${config.saveName}.${fileName}`);
-        await fs.rename(part, outputFile)
+        await fs
+            .rename(part, outputFile)
             .then(() => logger.log(`🎉 视频流式片段已写入 : ${outputFile}`, { colorful: true }))
             .catch(() => {
                 hasError = true;

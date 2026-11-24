@@ -48,8 +48,7 @@ function trackRunDuration(run: Buffer, defaultDuration: number): bigint {
     const samples = run.readUInt32BE(4);
     let offset = 8 + (flags & 1 ? 4 : 0) + (flags & 4 ? 4 : 0);
     const hasDuration = (flags & 0x100) !== 0;
-    const stride = (hasDuration ? 4 : 0) + (flags & 0x200 ? 4 : 0) +
-        (flags & 0x400 ? 4 : 0) + (flags & 0x800 ? 4 : 0);
+    const stride = (hasDuration ? 4 : 0) + (flags & 0x200 ? 4 : 0) + (flags & 0x400 ? 4 : 0) + (flags & 0x800 ? 4 : 0);
 
     if (offset + samples * stride > run.length || (samples && !hasDuration && !defaultDuration)) {
         throw new Error("fMP4 缺少有效的样本时长");
@@ -176,9 +175,8 @@ export class FMP4Timeline extends Transform {
             const trackId = header.readUInt32BE(4);
             if (!this.#timescales.has(trackId)) throw new Error(`fMP4 缺少轨道 ${trackId} 的初始化信息`);
             const defaultDurationOffset = 8 + (flags & 1 ? 8 : 0) + (flags & 2 ? 4 : 0);
-            const defaultDuration = flags & 8
-                ? header.readUInt32BE(defaultDurationOffset)
-                : this.#defaultDurations.get(trackId) ?? 0;
+            const defaultDuration =
+                flags & 8 ? header.readUInt32BE(defaultDurationOffset) : (this.#defaultDurations.get(trackId) ?? 0);
             let duration = 0n;
             for (const box of boxes) {
                 if (box.type === "trun") duration += trackRunDuration(box.data, defaultDuration);
@@ -207,7 +205,11 @@ export class FMP4Timeline extends Transform {
 /** 从旧版断点的输出恢复轨道时间轴。 */
 export async function readFMP4Checkpoint(filePath: string): Promise<FMP4Checkpoint> {
     const timeline = new FMP4Timeline();
-    const discard = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    const discard = new Writable({
+        write(_chunk, _encoding, callback) {
+            callback();
+        },
+    });
     await pipeline(createReadStream(filePath), timeline, discard);
     return timeline.checkpoint((await stat(filePath)).size);
 }

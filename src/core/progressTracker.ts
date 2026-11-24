@@ -95,15 +95,17 @@ class ProgressTracker {
         const skippedCount = this.#streamProgress?.skippedCount ?? 0;
         const skippedStr = skippedCount ? `，已跳过 ${skippedCount} 片` : "";
         const downloadedSizeStr = formatBytes(this.#downloadedBytes);
-        const totalSize = completedThisRun > 0
-            ? (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
-            : undefined;
+        const totalSize =
+            completedThisRun > 0
+                ? (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
+                : undefined;
         const totalSizeStr = totalSize === undefined ? "" : `/${formatBytes(totalSize)}`;
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
         const currentSpeedStr = `${formatBytes(this.#currentSpeed)}/s`;
-        const timeStr = this.#currentSpeed > 0 && totalSize !== undefined
-            ? ` @ ${formatTime(Math.max(0, totalSize - this.#downloadedBytes) / this.#currentSpeed)}`
-            : "";
+        const timeStr =
+            this.#currentSpeed > 0 && totalSize !== undefined
+                ? ` @ ${formatTime(Math.max(0, totalSize - this.#downloadedBytes) / this.#currentSpeed)}`
+                : "";
 
         logger.print(
             `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%)${skippedStr} -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`

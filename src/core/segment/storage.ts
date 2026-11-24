@@ -60,14 +60,17 @@ async function readStreamMergeState(
         // 校验结构、当前分片总数是否与历史记录完全一致
         if (
             useFMP4 === state.useFMP4 &&
-            typeof state.nextOffset === "number" && Number.isSafeInteger(state.nextOffset) &&
-            state.nextOffset > 0 && state.nextOffset <= currentTotalSegments &&
+            typeof state.nextOffset === "number" &&
+            Number.isSafeInteger(state.nextOffset) &&
+            state.nextOffset > 0 &&
+            state.nextOffset <= currentTotalSegments &&
             typeof state.totalSegments === "number" &&
             state.totalSegments === currentTotalSegments &&
             Array.isArray(state.parts) &&
-            state.parts.length > 0 && state.parts.every((part) => typeof part === "string") &&
-            (state.skippedCount === undefined || (Number.isSafeInteger(state.skippedCount) &&
-                state.skippedCount >= 0 && state.skippedCount < state.nextOffset))
+            state.parts.length > 0 &&
+            state.parts.every((part) => typeof part === "string") &&
+            (state.skippedCount === undefined ||
+                (Number.isSafeInteger(state.skippedCount) && state.skippedCount >= 0 && state.skippedCount < state.nextOffset))
         ) {
             logger.log(`➔ 流式断点续传分片数：${state.nextOffset}`);
             return {

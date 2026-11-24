@@ -86,9 +86,12 @@ async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntim
     if (typeof skipFailedSegments !== "boolean") {
         throw new Error("skipFailedSegments 必须是布尔值");
     }
-    const validLimit = typeof maxFailedSegments === "number"
-        ? Number.isFinite(maxFailedSegments) && (maxFailedSegments < 1 || Number.isSafeInteger(maxFailedSegments))
-        : typeof maxFailedSegments === "string" && /^\d+(?:\.\d+)?%$/.test(maxFailedSegments) && parseFloat(maxFailedSegments) <= 100;
+    const validLimit =
+        typeof maxFailedSegments === "number"
+            ? Number.isFinite(maxFailedSegments) && (maxFailedSegments < 1 || Number.isSafeInteger(maxFailedSegments))
+            : typeof maxFailedSegments === "string" &&
+              /^\d+(?:\.\d+)?%$/.test(maxFailedSegments) &&
+              parseFloat(maxFailedSegments) <= 100;
     if (!validLimit) {
         throw new Error('maxFailedSegments 必须是整数、小于 1 的数值或 0% 到 100% 之间的百分比字符串（例如 "10%"）');
     }

@@ -29,7 +29,7 @@ export async function handleMapAndInfo(
 
     const { fileName: firstSegmentName, filePath: firstSegmentPath } = formatFileInfo(segments[0].index, config.tsDir);
     if (mapInfo) {
-        const cachedMap = isResumable && await hasCachedData(mapPath);
+        const cachedMap = isResumable && (await hasCachedData(mapPath));
         if (!cachedMap) {
             logger.log(`下载 MAP 文件...`);
             const headers: ImpitOptions["headers"] = {};
@@ -53,8 +53,10 @@ export async function handleMapAndInfo(
     }
 
     // 流式断点已包含首片。旧的带 MAP 断点可能没有单独缓存首片。
-    const cachedFirst = isResumable && (config.streamMerge || progressTracker.has("success", firstSegmentName)) &&
-        await hasCachedData(firstSegmentPath);
+    const cachedFirst =
+        isResumable &&
+        (config.streamMerge || progressTracker.has("success", firstSegmentName)) &&
+        (await hasCachedData(firstSegmentPath));
     if (!cachedFirst && !(isResumable && config.streamMerge && mapInfo)) {
         logger.log(`下载首分片...`);
         const firstSegment = segments[0]!;

@@ -9,6 +9,11 @@
         "registerUrlProtocol": "node src/bin/protocol.ts --register",
         "unregisterUrlProtocol": "node src/bin/protocol.ts --unregister",
         "knip": "knip",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint .",
+        "check": "npm run typecheck && npm run lint && npm run format:check",
         "build": "bun run build.ts"
     },
     "author": "DreamNya",
