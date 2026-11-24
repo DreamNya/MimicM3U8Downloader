@@ -22,7 +22,9 @@ function monitorFFmpegProcess(
     // FFmpeg 的进度和日志绝大部分都在 stderr 流中
     ffmpegChild.stderr?.on("data", (chunk: Buffer) => {
         // 实时输出到 CMD 窗口
-        if (printLive) process.stderr.write(chunk);
+        if (printLive) {
+            process.stderr.write(chunk);
+        }
         const logStr = chunk.toString();
         // 累加到内存缓冲区中
         ffmpegLogBuffer += logStr;
@@ -38,7 +40,9 @@ function monitorFFmpegProcess(
 
     if (captureStdout) {
         ffmpegChild.stdout?.on("data", (chunk: Buffer) => {
-            if (printLive) process.stdout.write(chunk);
+            if (printLive) {
+                process.stdout.write(chunk);
+            }
             ffmpegLogBuffer += chunk.toString();
         });
     }

@@ -24,5 +24,6 @@
         "@typescript-eslint/no-dupe-class-members": "error",
         "no-loss-of-precision": "off",
         "@typescript-eslint/no-loss-of-precision": "error"
-    }
+    },
+    "ignorePatterns": ["/node_modules/", "/dist/", "/libs/", "/out/", "/coverage/", "/dist-artifacts/", "/logs/", "/.nyc_output/"]
 }

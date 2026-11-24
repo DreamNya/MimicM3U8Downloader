@@ -74,20 +74,26 @@ class Logger {
             return;
         }
 
-        if (output === process.stdout) this.endProgress();
+        if (output === process.stdout) {
+            this.endProgress();
+        }
         output.write(`${message}\n`);
     }
 
     #fitProgressLine(line: string): string {
         const columns = process.stdout.columns;
-        if (!columns) return line;
+        if (!columns) {
+            return line;
+        }
 
         // 进度行只包含 ASCII 和中文，留出最后一列以免终端自动换行。
         let remaining = columns - 1;
         let visible = "";
         for (const character of line) {
             remaining -= character.charCodeAt(0) <= 0x7f ? 1 : 2;
-            if (remaining < 0) break;
+            if (remaining < 0) {
+                break;
+            }
             visible += character;
         }
         return visible;

@@ -65,7 +65,9 @@ async function downloadAllSegments(segments: Segment[], sanitizeMpegTs: boolean,
                 }
                 progressTracker.print();
             } catch (err) {
-                if (controller.signal.aborted) return;
+                if (controller.signal.aborted) {
+                    return;
+                }
                 stopError = err instanceof Error ? err : new Error(getErrorMessage(err));
                 controller.abort();
             }

@@ -14,7 +14,9 @@ async function hasCachedData(filePath: string): Promise<boolean> {
         const info = await fs.stat(filePath);
         return info.isFile() && info.size > 0;
     } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            return false;
+        }
         throw new Error(`无法读取缓存文件 ${filePath}：${getErrorMessage(err)}`, { cause: err });
     }
 }

@@ -21,10 +21,14 @@ interface BoxHeader {
 }
 
 function readBoxHeader(buffer: Buffer): BoxHeader | undefined {
-    if (buffer.length < 8) return;
+    if (buffer.length < 8) {
+        return;
+    }
     const size32 = buffer.readUInt32BE(0);
     const headerSize = size32 === 1 ? 16 : 8;
-    if (buffer.length < headerSize) return;
+    if (buffer.length < headerSize) {
+        return;
+    }
     const size = size32 === 1 ? Number(buffer.readBigUInt64BE(8)) : size32;
     if (!Number.isSafeInteger(size) || size < headerSize) {
         throw new Error("fMP4 Box 长度无效");
@@ -53,7 +57,9 @@ function trackRunDuration(run: Buffer, defaultDuration: number): bigint {
     if (offset + samples * stride > run.length || (samples && !hasDuration && !defaultDuration)) {
         throw new Error("fMP4 缺少有效的样本时长");
     }
-    if (!hasDuration) return BigInt(samples) * BigInt(defaultDuration);
+    if (!hasDuration) {
+        return BigInt(samples) * BigInt(defaultDuration);
+    }
 
     let duration = 0n;
     for (let i = 0; i < samples; i++, offset += stride) {
@@ -103,7 +109,9 @@ export class FMP4Timeline extends Transform {
                 }
 
                 const box = readBoxHeader(data);
-                if (!box) break;
+                if (!box) {
+                    break;
+                }
                 const metadata = box.type === "moov" || box.type === "moof";
                 const discard = this.#previousTracks && box.type !== "moof" && box.type !== "mdat";
                 if (!metadata && !discard) {
@@ -113,13 +121,17 @@ export class FMP4Timeline extends Transform {
                 if (box.size > 16 * 1024 * 1024) {
                     throw new Error(`fMP4 ${box.type} Box 过大`);
                 }
-                if (data.length < box.size) break;
+                if (data.length < box.size) {
+                    break;
+                }
                 if (box.type === "moov") {
                     this.#readMovie(data.subarray(box.headerSize, box.size));
                 } else if (box.type === "moof") {
                     this.#readFragment(data.subarray(box.headerSize, box.size));
                 }
-                if (!discard) this.push(data.subarray(0, box.size));
+                if (!discard) {
+                    this.push(data.subarray(0, box.size));
+                }
                 data = data.subarray(box.size);
             }
             this.#pending = data;
@@ -142,12 +154,16 @@ export class FMP4Timeline extends Transform {
                     }
                 }
             }
-            if (type !== "trak") continue;
+            if (type !== "trak") {
+                continue;
+            }
             const boxes = [...childBoxes(data)];
             const header = boxes.find((box) => box.type === "tkhd")?.data;
             const media = boxes.find((box) => box.type === "mdia")?.data;
             const clock = media && [...childBoxes(media)].find((box) => box.type === "mdhd")?.data;
-            if (!header || !clock) throw new Error("fMP4 缺少轨道时间刻度");
+            if (!header || !clock) {
+                throw new Error("fMP4 缺少轨道时间刻度");
+            }
             const trackId = header.readUInt32BE(header[0] === 1 ? 20 : 12);
             const timescale = clock.readUInt32BE(clock[0] === 1 ? 20 : 12);
             if (!timescale || (this.#previousTracks && this.#previousTracks[trackId]?.timescale !== timescale)) {
@@ -160,28 +176,42 @@ export class FMP4Timeline extends Transform {
     #readFragment(fragment: Buffer): void {
         const fragmentBoxes = [...childBoxes(fragment)];
         const sequence = fragmentBoxes.find((box) => box.type === "mfhd")?.data;
-        if (!sequence) throw new Error("fMP4 缺少片段序号");
-        if (this.#previousTracks) sequence.writeUInt32BE(this.#fragmentNumber + 1, 4);
+        if (!sequence) {
+            throw new Error("fMP4 缺少片段序号");
+        }
+        if (this.#previousTracks) {
+            sequence.writeUInt32BE(this.#fragmentNumber + 1, 4);
+        }
         this.#fragmentNumber = Math.max(this.#fragmentNumber, sequence.readUInt32BE(4));
 
         for (const { type, data } of fragmentBoxes) {
-            if (type !== "traf") continue;
+            if (type !== "traf") {
+                continue;
+            }
             const boxes = [...childBoxes(data)];
             const header = boxes.find((box) => box.type === "tfhd")?.data;
             const timestamp = boxes.find((box) => box.type === "tfdt")?.data;
-            if (!header || !timestamp || timestamp[0] > 1) throw new Error("fMP4 缺少有效的轨道起始时间");
+            if (!header || !timestamp || timestamp[0] > 1) {
+                throw new Error("fMP4 缺少有效的轨道起始时间");
+            }
 
             const flags = header.readUInt32BE(0);
             const trackId = header.readUInt32BE(4);
-            if (!this.#timescales.has(trackId)) throw new Error(`fMP4 缺少轨道 ${trackId} 的初始化信息`);
+            if (!this.#timescales.has(trackId)) {
+                throw new Error(`fMP4 缺少轨道 ${trackId} 的初始化信息`);
+            }
             const defaultDurationOffset = 8 + (flags & 1 ? 8 : 0) + (flags & 2 ? 4 : 0);
             const defaultDuration =
                 flags & 8 ? header.readUInt32BE(defaultDurationOffset) : (this.#defaultDurations.get(trackId) ?? 0);
             let duration = 0n;
             for (const box of boxes) {
-                if (box.type === "trun") duration += trackRunDuration(box.data, defaultDuration);
+                if (box.type === "trun") {
+                    duration += trackRunDuration(box.data, defaultDuration);
+                }
             }
-            if (duration === 0n) continue;
+            if (duration === 0n) {
+                continue;
+            }
 
             const base = timestamp[0] === 1 ? timestamp.readBigUInt64BE(4) : BigInt(timestamp.readUInt32BE(4));
             let offset = this.#offsets.get(trackId);
@@ -192,10 +222,15 @@ export class FMP4Timeline extends Transform {
             }
             const start = base + offset;
             const priorEnd = this.#ends.get(trackId);
-            if (priorEnd !== undefined && start < priorEnd) throw new Error(`fMP4 轨道 ${trackId} 的解码时间重叠`);
+            if (priorEnd !== undefined && start < priorEnd) {
+                throw new Error(`fMP4 轨道 ${trackId} 的解码时间重叠`);
+            }
             if (offset !== 0n) {
-                if (timestamp[0] === 1) timestamp.writeBigUInt64BE(start, 4);
-                else timestamp.writeUInt32BE(Number(start), 4);
+                if (timestamp[0] === 1) {
+                    timestamp.writeBigUInt64BE(start, 4);
+                } else {
+                    timestamp.writeUInt32BE(Number(start), 4);
+                }
             }
             this.#ends.set(trackId, start + duration);
         }

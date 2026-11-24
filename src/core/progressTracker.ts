@@ -36,7 +36,9 @@ class ProgressTracker {
     }
 
     setSkippedCount(count: number): void {
-        if (this.#streamProgress) this.#streamProgress.skippedCount = count;
+        if (this.#streamProgress) {
+            this.#streamProgress.skippedCount = count;
+        }
     }
 
     stop(): void {

@@ -118,14 +118,18 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         if (!active.part) {
             const filePath = useFMP4 ? fMP4FilePath : path.join(config.tempDir, `part_${parts.length}.mp4`);
             active.part = openStreamPart(filePath, useFMP4, fmp4);
-            if (mapBuffer) await active.part.write(mapBuffer);
+            if (mapBuffer) {
+                await active.part.write(mapBuffer);
+            }
         }
         await active.part.write(buffer);
     };
 
     const saveCheckpoint = async (): Promise<void> => {
         const { part } = active;
-        if (!part) return;
+        if (!part) {
+            return;
+        }
         const nextFMP4 = await part.finish();
         const nextParts = useFMP4 ? [part.filePath] : [...parts, part.filePath];
         await writeStreamMergeState(stateFilePath, {
@@ -181,7 +185,9 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
 
                 const index = segments[result.index].index;
                 // 先保存缺片前的 fMP4，后续分片封装成功时才确认这次跳过。
-                if (useFMP4 && active.part) await saveCheckpoint();
+                if (useFMP4 && active.part) {
+                    await saveCheckpoint();
+                }
                 skipCandidates.push(index);
                 logger.warn(`分片 [${index}] 下载失败，等待后续分片封装成功后确认跳过`);
             } else {
@@ -193,7 +199,9 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
 
         await saveCheckpoint();
         progressTracker.stop();
-        if (downloadError) throw downloadError;
+        if (downloadError) {
+            throw downloadError;
+        }
         if (controller.signal.aborted) {
             logger.log("流式合并已保存当前断点", { colorful: true });
             return { skipCleanup: true };
@@ -202,7 +210,9 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         if (trailingFailures > 0) {
             throw new Error(`末尾 ${trailingFailures} 个分片下载失败，已保存断点，续传时将重新下载`);
         }
-        if (parts.length === 0) throw new Error("没有可用的流式合并产物");
+        if (parts.length === 0) {
+            throw new Error("没有可用的流式合并产物");
+        }
         if (confirmedSkips > 0) {
             logger.warn(`本轮流式合并跳过 ${confirmedSkips} 个下载失败的分片，编号为 ${skipCandidates.join("、")}`);
         }
