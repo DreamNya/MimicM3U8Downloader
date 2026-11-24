@@ -1,5 +1,6 @@
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
+import { formatBytes } from "#src/common/utils.ts";
 import { concatMP4Parts, formatFFmpegPath, startStreamMerge } from "#src/core/ffmpeg.ts";
 import type { Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
@@ -66,23 +67,44 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
     let confirmedSkips = 0;
     let parts = streamState?.parts ?? [];
     let fmp4 = streamState?.fmp4;
+    let mergedBytes = 0;
     if (failureLimit !== undefined && previouslySkipped > failureLimit) {
         throw segmentFailureLimitError(failureLimit);
+    }
+
+    if (streamState) {
+        if (useFMP4) {
+            fmp4 ??= await readFMP4Checkpoint(fMP4FilePath);
+            const { size } = await fs.stat(fMP4FilePath);
+            if (!Number.isSafeInteger(fmp4.byteLength) || fmp4.byteLength <= 0 || size < fmp4.byteLength) {
+                throw new Error("fMP4 文件大小与断点记录不符");
+            }
+            if (size > fmp4.byteLength) {
+                await fs.truncate(fMP4FilePath, fmp4.byteLength);
+            }
+            mergedBytes = fmp4.byteLength;
+        } else {
+            const sizes = await Promise.all(
+                parts.map(async (part) => {
+                    try {
+                        return (await fs.stat(part)).size;
+                    } catch (err) {
+                        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                            return 0;
+                        }
+                        throw err;
+                    }
+                })
+            );
+            mergedBytes = sizes.reduce((total, size) => total + size, 0);
+        }
+        logger.log(`➔ 流式断点续传分片数：${nextOffset}`);
+        logger.log(`➔ 流式断点续传大小：${formatBytes(mergedBytes)}`);
     }
 
     logger.log(`已启用流式合并模式${useFMP4 ? "(fMP4)" : ""}...\n`, { colorful: true });
     if (previouslySkipped > 0) {
         logger.warn(`续传前的流式合并已跳过 ${previouslySkipped} 个下载失败的分片`);
-    }
-    if (useFMP4 && nextOffset > 0) {
-        fmp4 ??= await readFMP4Checkpoint(fMP4FilePath);
-        const { size } = await fs.stat(fMP4FilePath);
-        if (!Number.isSafeInteger(fmp4.byteLength) || fmp4.byteLength <= 0 || size < fmp4.byteLength) {
-            throw new Error("fMP4 文件大小与断点记录不符");
-        }
-        if (size > fmp4.byteLength) {
-            await fs.truncate(fMP4FilePath, fmp4.byteLength);
-        }
     }
 
     const mapBuffer = nextOffset < segments.length && mapPath ? await fs.readFile(mapPath) : undefined;
@@ -131,6 +153,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
     try {
         progressTracker.start(segments.length, {
             completedBeforeRun: nextOffset - previouslySkipped,
+            bytesBeforeRun: mergedBytes,
             skippedCount: previouslySkipped,
         });
         progressTracker.print();

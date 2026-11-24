@@ -72,7 +72,6 @@ async function readStreamMergeState(
             (state.skippedCount === undefined ||
                 (Number.isSafeInteger(state.skippedCount) && state.skippedCount >= 0 && state.skippedCount < state.nextOffset))
         ) {
-            logger.log(`➔ 流式断点续传分片数：${state.nextOffset}`);
             return {
                 useFMP4: state.useFMP4,
                 nextOffset: state.nextOffset,

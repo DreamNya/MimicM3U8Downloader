@@ -5,6 +5,7 @@ type RecordType = "success" | "failed" | "cache";
 
 interface StreamProgress {
     completedBeforeRun: number;
+    bytesBeforeRun: number;
     skippedCount: number;
 }
 
@@ -94,17 +95,20 @@ class ProgressTracker {
         const failedStr = failedCount ? `-${failedCount}` : "";
         const skippedCount = this.#streamProgress?.skippedCount ?? 0;
         const skippedStr = skippedCount ? `，已跳过 ${skippedCount} 片` : "";
-        const downloadedSizeStr = formatBytes(this.#downloadedBytes);
+        const bytesBeforeRun = this.#streamProgress?.bytesBeforeRun ?? 0;
+        const downloadedBytes = bytesBeforeRun + this.#downloadedBytes;
+        const downloadedSizeStr = formatBytes(downloadedBytes);
         const totalSize =
             completedThisRun > 0
-                ? (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
+                ? bytesBeforeRun +
+                  (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
                 : undefined;
         const totalSizeStr = totalSize === undefined ? "" : `/${formatBytes(totalSize)}`;
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
         const currentSpeedStr = `${formatBytes(this.#currentSpeed)}/s`;
         const timeStr =
             this.#currentSpeed > 0 && totalSize !== undefined
-                ? ` @ ${formatTime(Math.max(0, totalSize - this.#downloadedBytes) / this.#currentSpeed)}`
+                ? ` @ ${formatTime(Math.max(0, totalSize - downloadedBytes) / this.#currentSpeed)}`
                 : "";
 
         logger.print(
