@@ -16,7 +16,8 @@ interface DownloadToBufferOptions {
     headers?: ImpitOptions["headers"];
     maxRetries: number;
     keyInfo?: Segment["keyInfo"];
-    signal?: AbortSignal;
+    signal: AbortSignal;
+    retriesAllowed: Promise<void>;
     sanitizeMpegTs?: boolean;
 }
 
@@ -36,10 +37,11 @@ type SegmentDownload = { index: number; buffer: Buffer } | { index: number; erro
  * 流式下载单个分片到内存 Buffer
  */
 async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount = 0): Promise<Buffer> {
-    const { url, fileName, headers = {}, maxRetries, keyInfo, signal, sanitizeMpegTs = false } = info;
+    const { url, fileName, headers = {}, maxRetries, keyInfo, signal, retriesAllowed, sanitizeMpegTs = false } = info;
     const progressState: ProgressState = { bytes: 0 };
 
     try {
+        signal.throwIfAborted();
         const response = await impit.fetch(url, { headers, signal });
         if (!response.ok) {
             throw new Error(`远程服务器返回错误 (${response.status})`);
@@ -52,14 +54,13 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
         const chunks: Buffer[] = [];
 
         for await (const chunk of inputStream) {
-            if (signal?.aborted) {
-                throw new Error("Download aborted by sliding window controller");
-            }
+            signal.throwIfAborted();
             const buf = chunk as Buffer;
             chunks.push(buf);
             progressTracker.recordChunk(buf.length);
             progressState.bytes += buf.length;
         }
+        signal.throwIfAborted();
 
         const downloadedBuffer = Buffer.concat(chunks);
         if (downloadedBuffer.length === 0) {
@@ -80,14 +81,15 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
     } catch (err) {
         progressTracker.rollbackBytes(progressState.bytes);
 
-        if (signal?.aborted) {
+        if (signal.aborted) {
             throw err;
         }
 
         logger.error(`分片 [${fileName}] 内存下载中断 (尝试第 ${retryCount + 1} 次): ${getErrorMessage(err)}`, { print: false });
 
         if (retryCount + 1 < maxRetries) {
-            await sleep(1000 * (retryCount + 1), undefined, { signal });
+            // 退避与排队同时进行，若退避已结束，成为队首后即可重试。
+            await Promise.all([sleep(1000 * (retryCount + 1), undefined, { signal }), retriesAllowed]);
             return downloadSegmentToBuffer(info, retryCount + 1);
         } else {
             const message = `分片 [${fileName}] 内存下载达到最大重试次数，下载失败`;
@@ -104,13 +106,14 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
     const { segments, concurrency, maxRetries, startIndex, sanitizeMpegTs, failFast } = options;
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, options.signal]);
-    const taskCache = new Map<number, Promise<SegmentDownload>>();
+    const taskCache = new Map<number, { result: Promise<SegmentDownload>; allowRetries: () => void }>();
     let firstFailure: SegmentDownload | undefined;
 
     const triggerDownload = (segIndex: number) => {
         if (segIndex < segments.length && !signal.aborted) {
             const seg = segments[segIndex]!;
             const { fileName } = formatFileInfo(seg.index);
+            const { promise: retriesAllowed, resolve: allowRetries } = Promise.withResolvers<void>();
 
             const promise = downloadSegmentToBuffer({
                 url: seg.url,
@@ -118,6 +121,7 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
                 maxRetries,
                 keyInfo: seg.keyInfo,
                 signal,
+                retriesAllowed,
                 sanitizeMpegTs,
             })
                 .then((buf) => {
@@ -134,7 +138,7 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
                     return failure;
                 });
 
-            taskCache.set(segIndex, promise);
+            taskCache.set(segIndex, { result: promise, allowRetries });
         }
     };
 
@@ -146,7 +150,10 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
         }
 
         for (let i = startIndex; i < segments.length; i++) {
-            const result = await taskCache.get(i);
+            // 后续分片可以预下载，只有队首分片可以发起重试。
+            const task = taskCache.get(i);
+            task?.allowRetries();
+            const result = await task?.result;
             if (options.signal.aborted) {
                 return;
             }
@@ -160,6 +167,11 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
         }
     } finally {
         controller.abort();
-        await Promise.allSettled(taskCache.values());
+        const pendingTasks = [...taskCache.values()].map(({ result, allowRetries }) => {
+            // 已完成退避的任务仍可能在排队，唤醒后由取消信号终止。
+            allowRetries();
+            return result;
+        });
+        await Promise.allSettled(pendingTasks);
     }
 }
