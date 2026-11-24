@@ -1,11 +1,15 @@
 import { getErrorMessage } from "#src/common/utils.ts";
 import fs from "fs";
+import type { WriteStream } from "node:tty";
 import path from "path";
+
+const clearLine = "\r\x1b[K";
 
 class Logger {
     #tempDir!: string;
     #FILEPATH!: string;
     #stream!: fs.WriteStream;
+    #progressLine?: string;
 
     init(tempDir: string) {
         this.#tempDir = tempDir;
@@ -19,11 +23,11 @@ class Logger {
             if (colorful) {
                 const [line0, ...lines] = message.split("\n");
 
-                console.log(
+                this.#writeConsole(
                     `${timeStamp} \x1b[38;2;193;156;0m${line0}\x1b[0m${lines.length ? `\n${" ".repeat(timeStamp.length + 1)}` + lines.join(`\n${" ".repeat(timeStamp.length + 1)}`) : ""}`
                 );
             } else {
-                console.log(`${timeStamp} ${message}`);
+                this.#writeConsole(`${timeStamp} ${message}`);
             }
         }
         if (log && this.#stream.writable) {
@@ -34,7 +38,7 @@ class Logger {
     warn(message: string, { print = true, log = true } = {}): void {
         const timeStamp = this.now();
         if (print) {
-            console.warn(`${timeStamp} ${message}`);
+            this.#writeConsole(`${timeStamp} ${message}`, process.stderr);
         }
         if (log && this.#stream.writable) {
             this.#stream.write(`[${timeStamp} WARN] ${message}\n`);
@@ -44,7 +48,7 @@ class Logger {
     error(message: string, { print = true, log = true } = {}): void {
         const timeStamp = this.now();
         if (print) {
-            console.error(`${timeStamp} ${message}`);
+            this.#writeConsole(`${timeStamp} ${message}`, process.stderr);
         }
         if (log && this.#stream.writable) {
             this.#stream.write(`[${timeStamp} ERROR] ${message}\n`);
@@ -52,8 +56,41 @@ class Logger {
     }
 
     print(message: string): void {
-        const timeStamp = this.now();
-        process.stdout.write(`\r\x1b[K${timeStamp} ${message}`);
+        this.#progressLine = `${this.now()} ${message}`;
+        process.stdout.write(clearLine + this.#fitProgressLine(this.#progressLine));
+    }
+
+    endProgress(): void {
+        if (this.#progressLine !== undefined) {
+            this.#progressLine = undefined;
+            process.stdout.write("\n");
+        }
+    }
+
+    #writeConsole(message: string, output: WriteStream = process.stdout): void {
+        if (this.#progressLine !== undefined && process.stdout.isTTY && output.isTTY) {
+            // 一次写入清除、日志和重绘，避免 stdout 与 stderr 交错。
+            process.stdout.write(`${clearLine}${message}\n${this.#fitProgressLine(this.#progressLine)}`);
+            return;
+        }
+
+        if (output === process.stdout) this.endProgress();
+        output.write(`${message}\n`);
+    }
+
+    #fitProgressLine(line: string): string {
+        const columns = process.stdout.columns;
+        if (!columns) return line;
+
+        // 进度行只包含 ASCII 和中文，留出最后一列以免终端自动换行。
+        let remaining = columns - 1;
+        let visible = "";
+        for (const character of line) {
+            remaining -= character.charCodeAt(0) <= 0x7f ? 1 : 2;
+            if (remaining < 0) break;
+            visible += character;
+        }
+        return visible;
     }
 
     async close(): Promise<void> {

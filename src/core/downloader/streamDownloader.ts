@@ -2,6 +2,7 @@ import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { concatMP4Parts, formatFFmpegPath, startStreamMerge } from "#src/core/ffmpeg.ts";
 import type { Segment } from "#src/core/m3u8Parser.ts";
+import { progressTracker } from "#src/core/progressTracker.ts";
 import { segmentFailureLimitError } from "#src/core/segment/failureLimit.ts";
 import { downloadSegmentsInOrder, writeStreamMergeState, type StreamMergeState } from "#src/core/segment/index.ts";
 import { FMP4Timeline, readFMP4Checkpoint, type FMP4Checkpoint } from "#src/core/transform/fMP4.ts";
@@ -121,9 +122,18 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         for (let i = firstNewSkip; i < confirmedSkips; i++) {
             logger.warn(`流式合并中跳过下载失败的分片 [${skipCandidates[i]}]，累计跳过 ${previouslySkipped + i + 1} 片`);
         }
+        if (confirmedSkips > firstNewSkip) {
+            progressTracker.setSkippedCount(previouslySkipped + confirmedSkips);
+            progressTracker.print();
+        }
     };
 
     try {
+        progressTracker.start(segments.length, {
+            completedBeforeRun: nextOffset - previouslySkipped,
+            skippedCount: previouslySkipped,
+        });
+        progressTracker.print();
         if (nextOffset === 0) {
             await writeSegment(await fs.readFile(firstSegmentPath));
             nextOffset = 1;
@@ -160,6 +170,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         }
 
         await saveCheckpoint();
+        progressTracker.stop();
         if (downloadError) throw downloadError;
         if (controller.signal.aborted) {
             logger.log("流式合并已保存当前断点", { colorful: true });
@@ -189,6 +200,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         await active.part?.rollback();
         throw err;
     } finally {
+        progressTracker.stop();
         process.off("SIGINT", onInterrupt);
     }
 }

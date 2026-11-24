@@ -8,13 +8,13 @@ import { pipeline } from "node:stream/promises";
 /**
  * 监控 FFmpeg 进程的生命周期与日志输出
  * @param ffmpegChild FFmpeg 子进程
- * @param options 配置项（日志标题、是否捕获 stdout）
+ * @param options 配置项（日志标题、是否捕获 stdout、是否实时显示）
  */
 function monitorFFmpegProcess(
     ffmpegChild: ReturnType<typeof spawn>,
-    options: { logTitle?: string; captureStdout?: boolean } = {}
+    options: { logTitle?: string; captureStdout?: boolean; printLive?: boolean } = {}
 ): Promise<void> {
-    const { logTitle = "FFmpeg 运行日志", captureStdout = true } = options;
+    const { logTitle = "FFmpeg 运行日志", captureStdout = true, printLive = true } = options;
 
     // 在内存中缓存所有日志
     let ffmpegLogBuffer = "";
@@ -22,7 +22,7 @@ function monitorFFmpegProcess(
     // FFmpeg 的进度和日志绝大部分都在 stderr 流中
     ffmpegChild.stderr?.on("data", (chunk: Buffer) => {
         // 实时输出到 CMD 窗口
-        process.stderr.write(chunk);
+        if (printLive) process.stderr.write(chunk);
         const logStr = chunk.toString();
         // 累加到内存缓冲区中
         ffmpegLogBuffer += logStr;
@@ -38,7 +38,7 @@ function monitorFFmpegProcess(
 
     if (captureStdout) {
         ffmpegChild.stdout?.on("data", (chunk: Buffer) => {
-            process.stdout.write(chunk);
+            if (printLive) process.stdout.write(chunk);
             ffmpegLogBuffer += chunk.toString();
         });
     }
@@ -155,7 +155,7 @@ export function startStreamMerge(
     stdout: Readable;
     processExitPromise: Promise<void>;
 } {
-    const args = ["-hide_banner", "-i", "pipe:0", "-c", "copy"];
+    const args = ["-hide_banner", "-nostats", "-i", "pipe:0", "-c", "copy"];
 
     if (useFMP4) {
         args.push("-bsf:a", "aac_adtstoasc");
@@ -171,6 +171,7 @@ export function startStreamMerge(
         logTitle: "FFmpeg 封装日志",
         // fMP4 模式下，stdout 传输的是视频流二进制数据
         captureStdout: !useFMP4,
+        printLive: false,
     });
 
     return {
@@ -212,6 +213,7 @@ export function formatFFmpegPath(filePath: string): string {
 export function concatMP4Parts(concatPath: string, outputFile: string): Promise<void> {
     const ffmpegChild = spawn("ffmpeg", [
         "-hide_banner",
+        "-nostats",
         "-f",
         "concat",
         "-safe",
@@ -224,5 +226,5 @@ export function concatMP4Parts(concatPath: string, outputFile: string): Promise<
         "-y",
     ]);
 
-    return monitorFFmpegProcess(ffmpegChild, { logTitle: "FFmpeg 流式片段合并日志" });
+    return monitorFFmpegProcess(ffmpegChild, { logTitle: "FFmpeg 流式片段合并日志", printLive: false });
 }

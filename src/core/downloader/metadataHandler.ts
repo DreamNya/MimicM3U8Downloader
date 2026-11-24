@@ -69,7 +69,9 @@ export async function handleMapAndInfo(
         if (!result.ok) {
             throw new Error(`首分片下载失败：${result.failedMessage}`);
         }
-        progressTracker.add("success", firstSegmentName);
+        if (!isResumable || !config.streamMerge) {
+            progressTracker.add("success", firstSegmentName);
+        }
     }
 
     const segmentPath = mapInfo ? mapPath : firstSegmentPath;

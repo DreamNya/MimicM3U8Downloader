@@ -3,8 +3,14 @@ import { formatBytes, formatTime } from "#src/common/utils.ts";
 
 type RecordType = "success" | "failed" | "cache";
 
+interface StreamProgress {
+    completedBeforeRun: number;
+    skippedCount: number;
+}
+
 class ProgressTracker {
     #totalCount?: number;
+    #streamProgress?: StreamProgress;
     #downloadedBytes = 0;
     #lastBytes = 0;
     #currentSpeed = 0;
@@ -16,8 +22,9 @@ class ProgressTracker {
         cache: new Set(),
     };
 
-    start(totalCount: number): void {
+    start(totalCount: number, streamProgress?: StreamProgress): void {
         this.#totalCount = totalCount;
+        this.#streamProgress = streamProgress;
         this.#lastBytes = this.#downloadedBytes;
         this.#timer = setInterval(() => {
             const deltaBytes = this.#downloadedBytes - this.#lastBytes;
@@ -27,10 +34,16 @@ class ProgressTracker {
         }, 1000);
     }
 
+    setSkippedCount(count: number): void {
+        if (this.#streamProgress) this.#streamProgress.skippedCount = count;
+    }
+
     stop(): void {
         if (this.#timer) {
             clearInterval(this.#timer);
             this.#timer = null;
+            this.#totalCount = undefined;
+            logger.endProgress();
         }
     }
 
@@ -70,23 +83,30 @@ class ProgressTracker {
         if (!this.#totalCount) {
             return;
         }
-        const completedCount = this.size("success");
+        const completedThisRun = this.size("success");
+        const completedBeforeRun = this.#streamProgress?.completedBeforeRun ?? 0;
+        const completedCount = completedBeforeRun + completedThisRun;
         if (completedCount === 0) {
             return;
         }
 
         const failedCount = this.size("failed");
         const failedStr = failedCount ? `-${failedCount}` : "";
+        const skippedCount = this.#streamProgress?.skippedCount ?? 0;
+        const skippedStr = skippedCount ? `，已跳过 ${skippedCount} 片` : "";
         const downloadedSizeStr = formatBytes(this.#downloadedBytes);
-        const totalSize = (this.#downloadedBytes / completedCount) * this.#totalCount;
-        const totalSizeStr = formatBytes(totalSize);
+        const totalSize = completedThisRun > 0
+            ? (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
+            : undefined;
+        const totalSizeStr = totalSize === undefined ? "" : `/${formatBytes(totalSize)}`;
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
         const currentSpeedStr = `${formatBytes(this.#currentSpeed)}/s`;
-        const remainingBytes = Math.max(0, totalSize - this.#downloadedBytes);
-        const timeStr = this.#currentSpeed > 0 ? ` @ ${formatTime(remainingBytes / this.#currentSpeed)}` : "";
+        const timeStr = this.#currentSpeed > 0 && totalSize !== undefined
+            ? ` @ ${formatTime(Math.max(0, totalSize - this.#downloadedBytes) / this.#currentSpeed)}`
+            : "";
 
         logger.print(
-            `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%) -- ${downloadedSizeStr}/${totalSizeStr} (${currentSpeedStr}${timeStr})`
+            `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%)${skippedStr} -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`
         );
     }
 }

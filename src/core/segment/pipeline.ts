@@ -127,13 +127,9 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
                 })
                 .catch((err: unknown) => {
                     const failure = { index: segIndex, error: new Error(getErrorMessage(err), { cause: err }) };
-                    if (!signal.aborted) {
-                        progressTracker.add("failed", `分片 [${fileName}] 下载失败`);
-                        progressTracker.print();
-                        if (failFast) {
-                            firstFailure = failure;
-                            controller.abort();
-                        }
+                    if (failFast && !signal.aborted) {
+                        firstFailure = failure;
+                        controller.abort();
                     }
                     return failure;
                 });
