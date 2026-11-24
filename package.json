@@ -28,7 +28,7 @@
         "#config/*": "./config/*"
     },
     "dependencies": {
-        "impit": "^0.14.2",
+        "impit": "^0.14.9",
         "p-limit": "^7.3.0"
     },
     "devDependencies": {
