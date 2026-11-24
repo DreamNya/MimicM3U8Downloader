@@ -1,3 +1,4 @@
+import { createFileWriteStream } from "#src/common/fileStream.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import fs from "fs";
 import type { WriteStream } from "node:tty";
@@ -14,7 +15,7 @@ class Logger {
     init(tempDir: string) {
         this.#tempDir = tempDir;
         this.#FILEPATH = path.join(tempDir, `${Date.now()}.log`);
-        this.#stream = fs.createWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
+        this.#stream = createFileWriteStream(this.#FILEPATH, { flags: "a", encoding: "utf8" });
     }
 
     log(message: string, { print = true, log = true, colorful = false } = {}): void {

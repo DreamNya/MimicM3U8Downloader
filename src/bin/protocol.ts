@@ -1,17 +1,14 @@
 import { execSync } from "node:child_process";
-import path from "node:path";
+import { isSea } from "node:sea";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-const exeName = path.basename(process.execPath).toLowerCase();
-const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
-
-function getServerPath() {
+function getWorkerPath() {
     return fileURLToPath(import.meta.resolve("#src/bin/worker.ts"));
 }
 
 const nodePath = process.execPath;
-const rawCommandValue = isCompiled ? `"${nodePath}" --arg "%1"` : `"${nodePath}" "${getServerPath()}" --arg "%1"`;
+const rawCommandValue = isSea() ? `"${nodePath}" --arg "%1"` : `"${nodePath}" "${getWorkerPath()}" --arg "%1"`;
 
 // 注册表根路径 （HKCU无需管理员权限）
 const REG_KEY = "HKEY_CURRENT_USER\\Software\\Classes\\m3u8mimic";

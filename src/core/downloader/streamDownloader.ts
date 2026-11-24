@@ -1,4 +1,5 @@
 import { config } from "#src/common/cli.ts";
+import { createFileWriteStream } from "#src/common/fileStream.ts";
 import { logger } from "#src/common/logger.ts";
 import { formatBytes } from "#src/common/utils.ts";
 import { concatMP4Parts, formatFFmpegPath, startStreamMerge } from "#src/core/ffmpeg.ts";
@@ -7,7 +8,6 @@ import { progressTracker } from "#src/core/progressTracker.ts";
 import { segmentFailureLimitError } from "#src/core/segment/failureLimit.ts";
 import { downloadSegmentsInOrder, writeStreamMergeState, type StreamMergeState } from "#src/core/segment/index.ts";
 import { FMP4Timeline, readFMP4Checkpoint, type FMP4Checkpoint } from "#src/core/transform/fMP4.ts";
-import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -27,7 +27,7 @@ function openStreamPart(filePath: string, useFMP4: boolean, previous?: FMP4Check
     stdin.on("error", () => {}); // 写入回调和 FFmpeg 退出状态会报告错误。
     const timeline = useFMP4 ? new FMP4Timeline(previous) : undefined;
     const output = timeline
-        ? pipeline(stdout, timeline, createWriteStream(filePath, { flags: previous ? "a" : "w" }))
+        ? pipeline(stdout, timeline, createFileWriteStream(filePath, { flags: previous ? "a" : "w" }))
         : Promise.resolve();
     const completion = Promise.all([processExitPromise, output]).catch((err) => {
         stdin.destroy();

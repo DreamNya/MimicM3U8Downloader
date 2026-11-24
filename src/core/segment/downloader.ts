@@ -1,11 +1,11 @@
 import { impit } from "#src/common/fetch.ts";
+import { createFileWriteStream } from "#src/common/fileStream.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
 import { MpegTsPrefixTransform } from "#src/core/transform/mpegTs.ts";
 import type { ImpitOptions, ImpitResponse } from "impit";
-import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -204,7 +204,7 @@ async function pipeStreamWithProgress(
     signal?: AbortSignal
 ): Promise<void> {
     const inputStream = createSegmentStream(body, keyInfo);
-    const fileStream = createWriteStream(tmpFilePath, { flags: writeFlag });
+    const fileStream = createFileWriteStream(tmpFilePath, { flags: writeFlag });
 
     let lastBytesWritten = 0;
 

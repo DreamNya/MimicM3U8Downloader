@@ -3,14 +3,12 @@ import type { DownloadInputConfig, DownloadOptions, DownloadRuntimeConfig, UserP
 import { ATOB, safetyExit, sanitizeFilename, typedEntries } from "#src/common/utils.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isSea } from "node:sea";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 function getSettingPath(fileName: string): string {
-    const exeName = path.basename(process.execPath).toLowerCase();
-    // 无论是 Node.js SEA 还是 Bun Compile，编译成单文件后，可执行文件名都不会是 node 或 bun
-    const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
-    if (isCompiled) {
+    if (isSea()) {
         return path.join(path.dirname(process.execPath), "config", fileName);
     } else {
         return fileURLToPath(import.meta.resolve(`#config/${fileName}`));

@@ -3,14 +3,12 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { isSea } from "node:sea";
 import { fileURLToPath } from "node:url";
 
 // 保证在开发环境读取项目根目录，在 SEA 环境读取 .exe 同级的 setting
 function getSettingPath(fileName: string): string {
-    const exeName = path.basename(process.execPath).toLowerCase();
-    // 无论是 Node.js SEA 还是 Bun Compile，编译成单文件后，可执行文件名都不会是 node 或 bun
-    const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
-    if (isCompiled) {
+    if (isSea()) {
         return path.join(path.dirname(process.execPath), "config", fileName);
     } else {
         return fileURLToPath(import.meta.resolve(`#config/${fileName}`));
@@ -47,9 +45,7 @@ export async function runServer(): Promise<void> {
                     const json = JSON.parse(rawBody.toString());
                     const arg = "m3u8mimic://" + BTOA(JSON.stringify(json));
                     console.log("收到请求", json);
-                    const exeName = path.basename(process.execPath).toLowerCase();
-                    const isCompiled = !exeName.startsWith("node") && !exeName.startsWith("bun");
-                    const cmdArgs = isCompiled
+                    const cmdArgs = isSea()
                         ? ["/c", "start", "cmd", "/c", `""${process.execPath}"`, "--arg", `"${arg}""`]
                         : ["/c", "start", "cmd", "/c", "node", `"${getWorkerPath()}"`, "--arg", `"${arg}"`];
                     const child = spawn("cmd.exe", cmdArgs, {

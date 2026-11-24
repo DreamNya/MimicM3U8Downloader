@@ -73,7 +73,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 > 编译模式可跳过
 
-安装 **Node.js v23.6.0 或更高版本** (推荐: Node.js v24+ / latest LTS)
+直接运行源码需要 **Node.js v23.6.0 或更高版本**，推荐使用 **Node.js 26 LTS**。
 
 （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
 
@@ -375,12 +375,13 @@ curl -X POST "http://127.0.0.1:12345" \
 
 ### SEA单文件编译
 
-本项目依赖TypeScript / ESM架构 / C++编译库，开发环境采用 Node.js，仅 SEA 编译环境使用 Bun
+使用 **Node.js 26 LTS（最低 26.9.0）** 在目标平台构建。SEA 将 TypeScript 源码和运行依赖嵌入可执行文件，启动时由 Node.js 擦除类型。Worker 会将内置的 `impit` 原生模块提取到系统临时目录。Windows 会复用已提取的模块，Linux 和 macOS 会在进程退出时清理。
 
 手动SEA编译方法（单平台）
 
 ```bash
-bun run build
+npm ci
+npm run build
 ```
 
 GitHub Action（多平台）
