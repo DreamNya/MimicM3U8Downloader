@@ -146,10 +146,10 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         fmp4 = nextFMP4;
         active.part = undefined;
         for (let i = firstNewSkip; i < confirmedSkips; i++) {
-            logger.warn(`流式合并中跳过下载失败的分片 [${skipCandidates[i]}]，累计跳过 ${previouslySkipped + i + 1} 片`);
+            const index = skipCandidates[i];
+            progressTracker.add("failed", String(index));
         }
         if (confirmedSkips > firstNewSkip) {
-            progressTracker.setSkippedCount(previouslySkipped + confirmedSkips);
             progressTracker.print();
         }
     };
@@ -158,7 +158,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
         progressTracker.start(segments.length, {
             completedBeforeRun: nextOffset - previouslySkipped,
             bytesBeforeRun: mergedBytes,
-            skippedCount: previouslySkipped,
+            failedBeforeRun: previouslySkipped,
         });
         progressTracker.print();
         if (nextOffset === 0) {
@@ -189,7 +189,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
                     await saveCheckpoint();
                 }
                 skipCandidates.push(index);
-                logger.warn(`分片 [${index}] 下载失败，等待后续分片封装成功后确认跳过`);
+                logger.warn(`分片 [${index}] 下载失败`);
             } else {
                 await writeSegment(result.buffer);
                 nextOffset = result.index + 1;

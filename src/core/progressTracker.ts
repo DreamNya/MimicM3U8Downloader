@@ -6,7 +6,7 @@ type RecordType = "success" | "failed" | "cache";
 interface StreamProgress {
     completedBeforeRun: number;
     bytesBeforeRun: number;
-    skippedCount: number;
+    failedBeforeRun: number;
 }
 
 class ProgressTracker {
@@ -33,12 +33,6 @@ class ProgressTracker {
             this.#lastBytes = this.#downloadedBytes;
             this.print();
         }, 1000);
-    }
-
-    setSkippedCount(count: number): void {
-        if (this.#streamProgress) {
-            this.#streamProgress.skippedCount = count;
-        }
     }
 
     stop(): void {
@@ -93,17 +87,16 @@ class ProgressTracker {
             return;
         }
 
-        const failedCount = this.size("failed");
+        const failedCount = (this.#streamProgress?.failedBeforeRun ?? 0) + this.size("failed");
         const failedStr = failedCount ? `-${failedCount}` : "";
-        const skippedCount = this.#streamProgress?.skippedCount ?? 0;
-        const skippedStr = skippedCount ? `，已跳过 ${skippedCount} 片` : "";
         const bytesBeforeRun = this.#streamProgress?.bytesBeforeRun ?? 0;
         const downloadedBytes = bytesBeforeRun + this.#downloadedBytes;
         const downloadedSizeStr = formatBytes(downloadedBytes);
+        // 流式合并已确认跳过的分片不计入大小预估。
+        const estimatedSegmentCount = this.#totalCount - completedBeforeRun - (this.#streamProgress ? failedCount : 0);
         const totalSize =
             completedThisRun > 0
-                ? bytesBeforeRun +
-                  (this.#downloadedBytes / completedThisRun) * (this.#totalCount - completedBeforeRun - skippedCount)
+                ? bytesBeforeRun + (this.#downloadedBytes / completedThisRun) * estimatedSegmentCount
                 : undefined;
         const totalSizeStr = totalSize === undefined ? "" : `/${formatBytes(totalSize)}`;
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
@@ -114,7 +107,7 @@ class ProgressTracker {
                 : "";
 
         logger.print(
-            `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%)${skippedStr} -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`
+            `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%) -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`
         );
     }
 }
