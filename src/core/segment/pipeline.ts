@@ -1,4 +1,4 @@
-import { impit } from "#src/common/fetch.ts";
+import { fetchSegment } from "#src/common/fetch.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
@@ -42,15 +42,15 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
 
     try {
         signal.throwIfAborted();
-        const response = await impit.fetch(url, { headers, signal });
+        const { response, body } = await fetchSegment(url, headers, signal);
         if (!response.ok) {
             throw new Error(`远程服务器返回错误 (${response.status})`);
         }
-        if (!response.body) {
+        if (!body) {
             throw new Error("Response body empty");
         }
 
-        const inputStream = createSegmentStream(response.body, keyInfo);
+        const inputStream = createSegmentStream(body, keyInfo);
         const chunks: Buffer[] = [];
 
         for await (const chunk of inputStream) {

@@ -1,4 +1,4 @@
-import { impit } from "#src/common/fetch.ts";
+import { fetchSegment } from "#src/common/fetch.ts";
 import { createFileWriteStream } from "#src/common/fileStream.ts";
 import { logger } from "#src/common/logger.ts";
 import { getErrorMessage } from "#src/common/utils.ts";
@@ -256,7 +256,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             ? await getResumeState(tmpFilePath, sourceOffsetPath, sanitizeMpegTs, fileName)
             : EMPTY_RESUME_STATE;
 
-        const fetchOptions: ImpitOptions = { headers: { ...headers } };
+        let requestHeaders = { ...headers };
         if (resumeState.sourceSize > 0) {
             const resumeDescription =
                 resumeState.sourceOffset > 0
@@ -265,10 +265,10 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
 
             logger.log(`分片 [${fileName}] 尝试断点续传：${resumeDescription}`, { print: false });
 
-            fetchOptions.headers = { ...headers, Range: `bytes=${resumeState.sourceSize}-` };
+            requestHeaders = { ...headers, Range: `bytes=${resumeState.sourceSize}-` };
         }
 
-        const response = await impit.fetch(url, { ...fetchOptions, signal });
+        const { response, body } = await fetchSegment(url, requestHeaders, signal);
 
         if (!response.ok) {
             const status = response.status;
@@ -292,7 +292,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             throw new Error(message);
         }
 
-        if (!response.body) {
+        if (!body) {
             throw new Error("Response body empty");
         }
 
@@ -308,7 +308,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
         }
 
         await pipeStreamWithProgress(
-            response.body,
+            body,
             tmpFilePath,
             writeFlag,
             progressState,

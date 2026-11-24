@@ -61,19 +61,19 @@ export async function preflightKeys(segments: Segment[], mapKey?: Segment["keyIn
  * 分片下载流包装器，如果存在AES-128加密则混合解密流
  */
 export function createSegmentStream(body: ImpitResponse["body"], keyInfo?: Segment["keyInfo"]): Readable {
-    const downloadStream = Readable.fromWeb(body);
+    if (!keyInfo?.url || !keyInfo.iv) {
+        return Readable.fromWeb(body);
+    }
 
-    if (keyInfo?.url && keyInfo?.iv) {
+    try {
         const keyBuffer = keyCache.get(keyInfo.url);
         if (!keyBuffer) {
             throw new Error(`🔒 密钥未被缓存，请确保预检成功! URL: ${keyInfo.url}`);
         }
         const decipher = crypto.createDecipheriv("aes-128-cbc", keyBuffer, keyInfo.iv);
-        // 将源下载流的错误转发给 decipher 传导给上层，防止触发全局未捕获异常
-        downloadStream.on("error", (err) => decipher.emit("error", err));
-
-        return downloadStream.pipe(decipher);
+        return Readable.fromWeb(body).compose(decipher);
+    } catch (err) {
+        void body.cancel(err).catch(() => void 0);
+        throw err;
     }
-
-    return downloadStream;
 }

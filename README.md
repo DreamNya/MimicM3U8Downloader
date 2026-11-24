@@ -107,25 +107,28 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 下载器全局配置参数
 
-| 参数                    | 类型             | 默认值     | 说明                                                                                                                             |
-| ----------------------- | ---------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `browser`               | string           | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]                                        |
-| `proxyUrl`              | string           | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`                                                                                    |
-| `headers`               | object           | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）                                                                |
-| `range`                 | string           | `""`       | 分片选择范围 详见 [[range设置格式](#range设置格式)]                                                                              |
-| `concurrency`           | number           | `16`       | 分片并发请求数                                                                                                                   |
-| `maxRetries`            | number           | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）                                                                                  |
-| `timeout`               | number           | `60000`    | 网络请求的超时毫秒<br />（包含请求及连接时间，如果分片过大建议提高超时时间）                                                     |
-| `streamMerge`           | boolean          | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）             |
-| `streamMergeFMP4`       | boolean          | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）                                                              |
-| `streamMergeForceMerge` | boolean          | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件                                                                              |
-| `noMerge`               | boolean          | `false`    | 分片下载完毕不自动合并                                                                                                           |
-| `forceMerge`            | boolean          | `false`    | 下分片下载不完整时强制合并                                                                                                       |
-| `skipFailedSegments`    | boolean          | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务                                                      |
-| `maxFailedSegments`     | number \| string | `0`        | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限 |
-| `enableDelAfterDone`    | boolean          | `false`    | 下载完毕后删除临时文件夹                                                                                                         |
-| `pauseAfterDone`        | boolean          | `true`     | 下载完毕后暂停交互窗口                                                                                                           |
-| `debug`                 | boolean          | `false`    | 记录debug中间产物                                                                                                                |
+| 参数                    | 类型             | 默认值     | 说明                                                                                                                                             |
+| ----------------------- | ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `browser`               | string           | `"chrome"` | 模拟 TLS 指纹浏览器名称 <br> 详见 [<https://apify.github.io/impit/js/types/Browser.html>]                                                        |
+| `proxyUrl`              | string           | `""`       | 代理服务器地址，例如 `http://127.0.0.1:10808`                                                                                                    |
+| `headers`               | object           | `{}`       | 请求头（同时用于请求m3u8文件及分片）<br />（Referer、Cookies 等）                                                                                |
+| `range`                 | string           | `""`       | 分片选择范围 详见 [[range设置格式](#range设置格式)]                                                                                              |
+| `concurrency`           | number           | `16`       | 分片并发请求数                                                                                                                                   |
+| `maxRetries`            | number           | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）                                                                                                  |
+| `timeout`               | number           | `60000`    | 数据下载超时（毫秒）<br />分片创建请求后，若超过 timeout 未收到响应，则判定为超时<br />分片收到响应后，若连续 timeout 未收到新数据，则判定为超时 |
+| `totalTimeout`          | number           | `600000`   | 分片连接超时（毫秒）<br / >分片创建请求后，若超过 totalTimout 未完成下载，则判定为超时<br / >（可防止长时间低速下载）                            |
+| `streamMerge`           | boolean          | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）                             |
+| `streamMergeFMP4`       | boolean          | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）                                                                              |
+| `streamMergeForceMerge` | boolean          | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件                                                                                              |
+| `noMerge`               | boolean          | `false`    | 分片下载完毕不自动合并                                                                                                                           |
+| `forceMerge`            | boolean          | `false`    | 下分片下载不完整时强制合并                                                                                                                       |
+| `skipFailedSegments`    | boolean          | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务                                                                      |
+| `maxFailedSegments`     | number \| string | `0`        | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限                 |
+| `enableDelAfterDone`    | boolean          | `false`    | 下载完毕后删除临时文件夹                                                                                                                         |
+| `pauseAfterDone`        | boolean          | `true`     | 下载完毕后暂停交互窗口                                                                                                                           |
+| `debug`                 | boolean          | `false`    | 记录debug中间产物                                                                                                                                |
+
+分片读取共用一个单调时钟，采样间隔最多 1 秒。等待数据的超时判定会为采样误差留出余量。
 
 ---
 

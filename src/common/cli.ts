@@ -25,6 +25,7 @@ const defaultConfig: DownloadOptions = {
     skipFailedSegments: false,
     maxFailedSegments: 0,
     timeout: 60000,
+    totalTimeout: 600000,
     streamMerge: false,
     streamMergeFMP4: false,
     streamMergeForceMerge: false,
@@ -80,7 +81,7 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
 }
 
 async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntimeConfig> {
-    const { skipFailedSegments, maxFailedSegments } = config;
+    const { skipFailedSegments, maxFailedSegments, totalTimeout } = config;
     if (typeof skipFailedSegments !== "boolean") {
         throw new Error("skipFailedSegments 必须是布尔值");
     }
@@ -92,6 +93,9 @@ async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntim
               parseFloat(maxFailedSegments) <= 100;
     if (!validLimit) {
         throw new Error('maxFailedSegments 必须是整数、小于 1 的数值或 0% 到 100% 之间的百分比字符串（例如 "10%"）');
+    }
+    if (!Number.isInteger(totalTimeout) || totalTimeout < 1 || totalTimeout > 0xffff_ffff) {
+        throw new Error("totalTimeout 必须是 1 到 4294967295 之间的整数（毫秒）");
     }
 
     const saveName = sanitizeFilename(config.saveName);

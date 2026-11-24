@@ -48,11 +48,22 @@ export interface DownloadOptions {
     /** 最多可跳过的媒体分片数或百分比。数值小于 1 表示无上限。 */
     maxFailedSegments: number | string;
     /**
-     * 网络请求的超时毫秒
-     * * 包含请求及连接时间，如果分片过大建议提高超时时间
+     * 数据下载超时（毫秒）
+     * * 分片创建请求后，若超过 timeout 未收到响应，则判定为超时
+     * * 分片收到响应后，若连续 timeout 未收到新数据，则判定为超时
+     * * ⚠️ 分片收到响应后，每次收到任何大小新数据均重新开始计算下载超时时间
+     * * ⚠️ 为了防止长时间低速下载，建议同步修改 totalTimeout
      * @default 60000
      */
     timeout: number;
+    /**
+     * 分片连接超时（毫秒）
+     * * 分片创建请求后，若超过 totalTimout 未完成下载，则判定为超时
+     * * ℹ️ 可防止长时间低速下载
+     * * 实际取值 Math.max(timeout, totalTimeout)
+     * @default 600000
+     */
+    totalTimeout: number;
     /**
      * 流式合并
      * * 下载分片后直接在内存中流式合并
