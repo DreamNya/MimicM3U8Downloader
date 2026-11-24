@@ -121,6 +121,8 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | `streamMergeForceMerge` | boolean | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件
 | `noMerge`               | boolean | `false`    | 分片下载完毕不自动合并
 | `forceMerge`            | boolean | `false`    | 下分片下载不完整时强制合并
+| `skipFailedSegments`    | boolean | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务
+| `maxFailedSegments`     | number \| string | `0` | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限
 | `enableDelAfterDone`    | boolean | `false`    | 下载完毕后删除临时文件夹
 | `pauseAfterDone`        | boolean | `true`     | 下载完毕后暂停交互窗口
 | `debug`                 | boolean | `false`    | 记录debug中间产物
@@ -158,7 +160,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 > \- 如需手动中断下载，请在CLI中按下Ctrl+C，如此模块可以安全退出并保留断点  
 >
 > \** fMP4模式原理涉及元数据校验及重写，非常复杂，可能存在极端边界情况、非预期情况  
-> \- 详见 [src/core/fMP4.ts](src/core/fMP4.ts)  
+> \- 详见 [src/core/transform/fMP4.ts](src/core/transform/fMP4.ts)
 
 #### 下载模式工作原理
 

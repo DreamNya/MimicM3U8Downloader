@@ -1,6 +1,6 @@
 import { impit } from "#src/common/fetch.ts";
 import { logger } from "#src/common/logger.ts";
-import { getErrorMessage, sleep } from "#src/common/utils.ts";
+import { getErrorMessage } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
 import { MpegTsPrefixTransform } from "#src/core/transform/mpegTs.ts";
@@ -9,6 +9,7 @@ import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createSegmentStream } from "./crypto.ts";
 
 export interface DownloadInfo {
@@ -19,6 +20,7 @@ export interface DownloadInfo {
     maxRetries: number;
     keyInfo?: Segment["keyInfo"];
     sanitizeMpegTs?: boolean;
+    signal?: AbortSignal;
 }
 
 export interface DownloadResult {
@@ -198,7 +200,8 @@ async function pipeStreamWithProgress(
     progressState: ProgressState,
     keyInfo?: Segment["keyInfo"],
     sanitizeMpegTs = false,
-    onMpegTsDetected?: MpegTsDetectedHandler
+    onMpegTsDetected?: MpegTsDetectedHandler,
+    signal?: AbortSignal
 ): Promise<void> {
     const inputStream = createSegmentStream(body, keyInfo);
     const fileStream = createWriteStream(tmpFilePath, { flags: writeFlag });
@@ -225,9 +228,9 @@ async function pipeStreamWithProgress(
                 onDetected: onMpegTsDetected,
             });
 
-            await pipeline(inputStream, mpegTsTransform, fileStream);
+            await pipeline(inputStream, mpegTsTransform, fileStream, { signal });
         } else {
-            await pipeline(inputStream, fileStream);
+            await pipeline(inputStream, fileStream, { signal });
         }
     } finally {
         flush();
@@ -239,7 +242,7 @@ async function pipeStreamWithProgress(
  * 分片下载模块
  */
 export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promise<DownloadResult> {
-    const { url, filePath, fileName, headers = {}, maxRetries, keyInfo, sanitizeMpegTs = false } = info;
+    const { url, filePath, fileName, headers = {}, maxRetries, keyInfo, sanitizeMpegTs = false, signal } = info;
     const tmpFilePath = `${filePath}.tmp`;
     const sourceOffsetPath = `${tmpFilePath}.source-offset`;
     const tmpFileName = path.parse(fileName).name + ".tmp";
@@ -253,6 +256,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
     const progressState: ProgressState = { bytes: 0 };
 
     try {
+        signal?.throwIfAborted();
         const resumeState = hasTmpFile
             ? await getResumeState(tmpFilePath, sourceOffsetPath, sanitizeMpegTs, fileName)
             : EMPTY_RESUME_STATE;
@@ -269,7 +273,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             fetchOptions.headers = { ...headers, Range: `bytes=${resumeState.sourceSize}-` };
         }
 
-        const response = await impit.fetch(url, fetchOptions);
+        const response = await impit.fetch(url, { ...fetchOptions, signal });
 
         if (!response.ok) {
             const status = response.status;
@@ -327,8 +331,13 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
                     // 未加密分片，必须在 MPEG-TS 数据开始写入文件前保存偏移，保证续传正确
                     await updateSourceOffset(sourceOffsetPath, offset);
                 }
-            }
+            },
+            signal
         );
+
+        if (progressState.bytes === 0 && (writeFlag !== "a" || resumeState.localSize === 0)) {
+            throw new Error("Response body empty");
+        }
 
         // 如果重命名后的路径已存在，则默认覆盖
         await completeTmpFile(tmpFilePath, sourceOffsetPath, filePath);
@@ -336,10 +345,13 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
         return result;
     } catch (err) {
         progressTracker.rollbackBytes(progressState.bytes);
+        if (signal?.aborted || (err instanceof Error && (err as NodeJS.ErrnoException).path)) {
+            throw err;
+        }
         logger.error(`分片 [${fileName}] 下载中断 (尝试第 ${retryCount + 1} 次): ${getErrorMessage(err)}`, { print: false });
 
         if (retryCount + 1 < maxRetries) {
-            await sleep(1000 * (retryCount + 1));
+            await sleep(1000 * (retryCount + 1), undefined, { signal });
             return downloadSegment(info, retryCount + 1);
         } else {
             await cleanTmpFile(tmpFilePath, sourceOffsetPath);

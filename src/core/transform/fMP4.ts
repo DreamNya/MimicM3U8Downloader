@@ -1,296 +1,213 @@
-import { logger } from "#src/common/logger.ts";
-import { type SegmentInfo } from "#src/core/ffmpeg.ts";
-import fs from "node:fs/promises";
-import { Transform } from "node:stream";
+import { createReadStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Transform, Writable, type TransformCallback } from "node:stream";
+import { pipeline } from "node:stream/promises";
 
-/**
- * fMP4 过滤器
- * * 过滤 ftyp/moov 并定位 moof
- */
-export class MoofTransform extends Transform {
-    #moofFound = false;
-    #buffer = Buffer.alloc(0);
-    // 防止损坏或恶意文件导致内存溢出
-    readonly #MAX_BUFFER_SIZE = 20 * 1024 * 1024;
-
-    _transform(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void) {
-        if (this.#moofFound) {
-            this.push(chunk);
-            return callback();
-        }
-
-        if (this.#buffer.length + chunk.length > this.#MAX_BUFFER_SIZE) {
-            this.#cleanup();
-            return callback(new Error("MoofTransform: Too large Buffer size"));
-        }
-
-        this.#buffer = Buffer.concat([this.#buffer, chunk]);
-
-        // 循环解析 MP4 Box 结构
-        while (this.#buffer.length >= 8) {
-            // 读取前 4 字节的 Box Size
-            const boxSize = this.#buffer.readUInt32BE(0);
-            // 读取 4-8 字节的 Box Type
-            const boxType = this.#buffer.toString("ascii", 4, 8);
-
-            // 暂时不支持解析小于8字节的Box
-            if (boxSize < 8) {
-                this.#cleanup();
-                return callback(new Error(`MoofTransform: Unsupported MP4 standard box size: ${boxSize}`));
-            }
-
-            if (boxSize > this.#MAX_BUFFER_SIZE) {
-                this.#cleanup();
-                return callback(new Error(`MoofTransform: Box size exceeds safety limit`));
-            }
-
-            // 精准匹配 moof
-            if (boxType === "moof") {
-                this.#moofFound = true;
-                // 直接把当前位置（包含整个 moof 及其后面的所有内容）推向下游
-                this.push(this.#buffer);
-                this.#buffer = Buffer.alloc(0); // 清空暂存区
-                return callback();
-            }
-
-            // 如果不是 moof (例如 ftyp, moov)，检查 Box 数据是否接收完整
-            if (this.#buffer.length >= boxSize) {
-                // 直接裁剪掉这个 Box，释放内存
-                this.#buffer = this.#buffer.subarray(boxSize);
-            } else {
-                // 当前 Box 数据还不完整
-                break;
-            }
-        }
-
-        callback();
-    }
-
-    _flush(callback: () => void) {
-        logger.log("MoofTransform 校验通过", { colorful: true });
-        callback();
-    }
-
-    #cleanup() {
-        this.#buffer = Buffer.alloc(0);
-    }
-}
-export async function completeFMP4Merge(fMP4FilePath: string, outputFile: string): Promise<void> {
-    // await removeTrailingMfra(fMP4FilePath);
-    await fs.rename(fMP4FilePath, outputFile).catch(() => void 0);
+interface TrackEnd {
+    timescale: number;
+    decodeEnd: string;
 }
 
-export function checkTimescaleMap(timescaleMap: SegmentInfo["timescaleMap"]): boolean {
-    return [...timescaleMap.values()].every((value) => value > 0);
+export interface FMP4Checkpoint {
+    byteLength: number;
+    fragmentNumber: number;
+    tracks: Record<string, TrackEnd>;
 }
 
-/**
- * fMP4 音视频流时间戳修正器
- */
-export class TimestampAdjuster extends Transform {
-    readonly #currentDuration: number;
-    readonly #timescaleMap: Map<number, number>;
+interface BoxHeader {
+    size: number;
+    type: string;
+    headerSize: number;
+}
 
-    #state: "READ_HEADER" | "READ_MOOF" | "PASSTHROUGH" = "READ_HEADER";
-    #buffer = Buffer.alloc(0);
+function readBoxHeader(buffer: Buffer): BoxHeader | undefined {
+    if (buffer.length < 8) return;
+    const size32 = buffer.readUInt32BE(0);
+    const headerSize = size32 === 1 ? 16 : 8;
+    if (buffer.length < headerSize) return;
+    const size = size32 === 1 ? Number(buffer.readBigUInt64BE(8)) : size32;
+    if (!Number.isSafeInteger(size) || size < headerSize) {
+        throw new Error("fMP4 Box 长度无效");
+    }
+    return { size, headerSize, type: buffer.toString("ascii", 4, 8) };
+}
 
-    // 当前正在处理的 Top-level Box 信息
-    #currentBoxType = "";
-    #currentBoxSize = 0n;
-    #headerSize = 8;
-    #passthroughRemaining = 0n;
+function* childBoxes(buffer: Buffer): Generator<{ type: string; data: Buffer }> {
+    while (buffer.length) {
+        const box = readBoxHeader(buffer);
+        if (!box || box.size > buffer.length) {
+            throw new Error("fMP4 子 Box 不完整");
+        }
+        yield { type: box.type, data: buffer.subarray(box.headerSize, box.size) };
+        buffer = buffer.subarray(box.size);
+    }
+}
 
-    // 防止损坏或恶意文件导致内存溢出
-    readonly #MAX_METADATA_SIZE = 10n * 1024n * 1024n;
+function trackRunDuration(run: Buffer, defaultDuration: number): bigint {
+    const flags = run.readUInt32BE(0);
+    const samples = run.readUInt32BE(4);
+    let offset = 8 + (flags & 1 ? 4 : 0) + (flags & 4 ? 4 : 0);
+    const hasDuration = (flags & 0x100) !== 0;
+    const stride = (hasDuration ? 4 : 0) + (flags & 0x200 ? 4 : 0) +
+        (flags & 0x400 ? 4 : 0) + (flags & 0x800 ? 4 : 0);
 
-    /**
-     * @param currentDuration 当前追加的起始时间偏移（秒）
-     * @param timescaleMap 动态的 TrackID -> Timescale 映射表，例如：new Map([[1, 90000], [2, 44100]])
-     */
-    constructor(currentDuration: number, timescaleMap: SegmentInfo["timescaleMap"]) {
+    if (offset + samples * stride > run.length || (samples && !hasDuration && !defaultDuration)) {
+        throw new Error("fMP4 缺少有效的样本时长");
+    }
+    if (!hasDuration) return BigInt(samples) * BigInt(defaultDuration);
+
+    let duration = 0n;
+    for (let i = 0; i < samples; i++, offset += stride) {
+        duration += BigInt(run.readUInt32BE(offset));
+    }
+    return duration;
+}
+
+/** 读取 FFmpeg 输出的轨道时间轴，并在追加时按各轨道实际结束位置偏移。 */
+export class FMP4Timeline extends Transform {
+    readonly #previousTracks: FMP4Checkpoint["tracks"] | undefined;
+    readonly #timescales = new Map<number, number>();
+    readonly #defaultDurations = new Map<number, number>();
+    readonly #offsets = new Map<number, bigint>();
+    readonly #ends = new Map<number, bigint>();
+    #pending: Buffer = Buffer.alloc(0);
+    #passthroughBytes = 0;
+    #fragmentNumber: number;
+
+    constructor(previous?: FMP4Checkpoint) {
         super();
-        this.#currentDuration = currentDuration;
-        this.#timescaleMap = new Map(timescaleMap);
+        this.#previousTracks = previous?.tracks;
+        this.#fragmentNumber = previous?.fragmentNumber ?? 0;
     }
 
-    _transform(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void) {
-        this.#buffer = Buffer.concat([this.#buffer, chunk]);
-
-        let shouldProcess = true;
-        while (shouldProcess) {
-            if (this.#state === "READ_HEADER") {
-                // 最少需要 8 字节来读取基础 Header (Size + Type)
-                if (this.#buffer.length < 8) {
-                    shouldProcess = false;
-                    break;
-                }
-
-                const size = this.#buffer.readUInt32BE(0);
-                const type = this.#buffer.toString("ascii", 4, 8);
-
-                let headerSize = 8;
-                let realSize = BigInt(size);
-
-                // 处理 64 位的 Large Box
-                if (size === 1) {
-                    if (this.#buffer.length < 16) {
-                        shouldProcess = false;
-                        break;
-                    }
-                    realSize = this.#buffer.readBigUInt64BE(8);
-                    headerSize = 16;
-                }
-
-                this.#currentBoxType = type;
-                this.#currentBoxSize = realSize;
-                this.#headerSize = headerSize;
-
-                if (type === "moof") {
-                    if (realSize > this.#MAX_METADATA_SIZE) {
-                        return callback(new Error("TimestampAdjuster: 'moof' box size exceeds safety limit"));
-                    }
-                    this.#state = "READ_MOOF";
-                } else {
-                    // 非 moof 块 (如 mdat, sidx, free) 直接透传
-                    this.#state = "PASSTHROUGH";
-                    // 如果 size === 0，意味着该 Box 一直延伸到流的末尾
-                    this.#passthroughRemaining = size === 0 ? 0n : realSize - BigInt(headerSize);
-
-                    // 先把当前已经收到的 Header 发送出去
-                    this.push(this.#buffer.subarray(0, headerSize));
-                    this.#buffer = this.#buffer.subarray(headerSize);
-                }
-            }
-
-            if (this.#state === "READ_MOOF") {
-                const targetLength = Number(this.#currentBoxSize);
-                if (this.#buffer.length < targetLength) {
-                    // 数据不够，等待下一个 chunk
-                    shouldProcess = false;
-                    break;
-                }
-
-                // 截取完整的 moof 数据块进行结构化解析
-                const moofBuf = this.#buffer.subarray(0, targetLength);
-                const err = this.#adjustMoofStructure(moofBuf);
-                if (err) {
-                    this.#cleanup();
-                    return callback(err);
-                }
-
-                this.push(moofBuf);
-                this.#buffer = this.#buffer.subarray(targetLength);
-                this.#state = "READ_HEADER";
-            }
-
-            if (this.#state === "PASSTHROUGH") {
-                if (this.#buffer.length === 0) {
-                    shouldProcess = false;
-                    break;
-                }
-
-                // 如果是无界 Box (size=0)
-                if (this.#currentBoxSize === 0n) {
-                    this.push(this.#buffer);
-                    this.#buffer = Buffer.alloc(0);
-                    shouldProcess = false;
-                    break;
-                }
-
-                const available = BigInt(this.#buffer.length);
-                const toWrite = available > this.#passthroughRemaining ? this.#passthroughRemaining : available;
-
-                this.push(this.#buffer.subarray(0, Number(toWrite)));
-                this.#buffer = this.#buffer.subarray(Number(toWrite));
-                this.#passthroughRemaining -= toWrite;
-
-                if (this.#passthroughRemaining === 0n) {
-                    this.#state = "READ_HEADER";
-                }
-            }
+    checkpoint(byteLength: number): FMP4Checkpoint {
+        if (!this.#ends.size) {
+            throw new Error("fMP4 输出没有可用的媒体样本");
         }
-
-        callback();
+        const tracks = { ...this.#previousTracks };
+        for (const [trackId, end] of this.#ends) {
+            tracks[trackId] = { timescale: this.#timescales.get(trackId)!, decodeEnd: end.toString() };
+        }
+        return { byteLength, fragmentNumber: this.#fragmentNumber, tracks };
     }
 
-    /**
-     * 解析 moof -> traf -> tfhd/tfdt 拓扑树
-     */
-    #adjustMoofStructure(moofBuf: Buffer): Error | null {
-        let pos = this.#headerSize; // 跳过 moof 自身的 header
+    override _transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback): void {
+        let data = this.#pending.length ? Buffer.concat([this.#pending, chunk]) : chunk;
+        try {
+            while (data.length) {
+                if (this.#passthroughBytes > 0) {
+                    const consumed = Math.min(data.length, this.#passthroughBytes);
+                    this.push(data.subarray(0, consumed));
+                    data = data.subarray(consumed);
+                    this.#passthroughBytes -= consumed;
+                    continue;
+                }
 
-        while (pos + 8 <= moofBuf.length) {
-            const subSize = moofBuf.readUInt32BE(pos);
-            const subType = moofBuf.toString("ascii", pos + 4, pos + 8);
-
-            if (subSize < 8 || pos + subSize > moofBuf.length) {
-                return new Error(`TimestampAdjuster: Malformed sub-box '${subType}' inside 'moof'`);
+                const box = readBoxHeader(data);
+                if (!box) break;
+                const metadata = box.type === "moov" || box.type === "moof";
+                const discard = this.#previousTracks && box.type !== "moof" && box.type !== "mdat";
+                if (!metadata && !discard) {
+                    this.#passthroughBytes = box.size;
+                    continue;
+                }
+                if (box.size > 16 * 1024 * 1024) {
+                    throw new Error(`fMP4 ${box.type} Box 过大`);
+                }
+                if (data.length < box.size) break;
+                if (box.type === "moov") {
+                    this.#readMovie(data.subarray(box.headerSize, box.size));
+                } else if (box.type === "moof") {
+                    this.#readFragment(data.subarray(box.headerSize, box.size));
+                }
+                if (!discard) this.push(data.subarray(0, box.size));
+                data = data.subarray(box.size);
             }
+            this.#pending = data;
+            callback();
+        } catch (err) {
+            callback(err as Error);
+        }
+    }
 
-            if (subType === "traf") {
-                let trafPos = pos + 8;
-                const trafEnd = pos + subSize;
-                let currentTrackId: number | null = null;
+    override _flush(callback: TransformCallback): void {
+        callback(this.#pending.length || this.#passthroughBytes ? new Error("fMP4 输出被截断") : undefined);
+    }
 
-                // 步进解析 traf 内部的子 Box
-                while (trafPos + 8 <= trafEnd) {
-                    const box2Size = moofBuf.readUInt32BE(trafPos);
-                    const box2Type = moofBuf.toString("ascii", trafPos + 4, trafPos + 8);
-
-                    if (box2Size < 8 || trafPos + box2Size > trafEnd) {
-                        break;
+    #readMovie(movie: Buffer): void {
+        for (const { type, data } of childBoxes(movie)) {
+            if (type === "mvex") {
+                for (const box of childBoxes(data)) {
+                    if (box.type === "trex") {
+                        this.#defaultDurations.set(box.data.readUInt32BE(4), box.data.readUInt32BE(12));
                     }
-
-                    if (box2Type === "tfhd") {
-                        // tfhd 结构: 4字节size + 4字节type + 4字节flags + 4字节 track_ID
-                        if (box2Size >= 16) {
-                            currentTrackId = moofBuf.readUInt32BE(trafPos + 12);
-                        }
-                    } else if (box2Type === "tfdt") {
-                        if (currentTrackId === null) {
-                            return new Error("TimestampAdjuster: Malformed MP4, 'tfdt' box found before 'tfhd' in 'traf'");
-                        }
-                        const version = moofBuf[trafPos + 8]; // FullBox version
-
-                        // 动态匹配：从 Map 中提取该 trackId 的真实 timescale，找不到则默认 90000 降级
-                        const timescale = this.#timescaleMap.get(currentTrackId);
-                        if (!timescale) {
-                            return new Error(`TimestampAdjuster: Missing timescale, TrackId:${currentTrackId}`);
-                        }
-                        const offsetTicks = Math.round(this.#currentDuration * timescale);
-
-                        if (version === 0 && box2Size >= 16) {
-                            const originalVal = moofBuf.readUInt32BE(trafPos + 12);
-                            const newVal = (originalVal + offsetTicks) % 0x100000000;
-                            moofBuf.writeUInt32BE(newVal, trafPos + 12);
-                        } else if (version === 1 && box2Size >= 20) {
-                            const originalVal = moofBuf.readBigUInt64BE(trafPos + 12);
-                            const newVal = originalVal + BigInt(offsetTicks);
-                            moofBuf.writeBigUInt64BE(newVal, trafPos + 12);
-                        } else {
-                            return new Error(`TimestampAdjuster: Unsupported tfdt box version: ${version}`);
-                        }
-                    }
-                    trafPos += box2Size;
                 }
             }
-            pos += subSize;
+            if (type !== "trak") continue;
+            const boxes = [...childBoxes(data)];
+            const header = boxes.find((box) => box.type === "tkhd")?.data;
+            const media = boxes.find((box) => box.type === "mdia")?.data;
+            const clock = media && [...childBoxes(media)].find((box) => box.type === "mdhd")?.data;
+            if (!header || !clock) throw new Error("fMP4 缺少轨道时间刻度");
+            const trackId = header.readUInt32BE(header[0] === 1 ? 20 : 12);
+            const timescale = clock.readUInt32BE(clock[0] === 1 ? 20 : 12);
+            if (!timescale || (this.#previousTracks && this.#previousTracks[trackId]?.timescale !== timescale)) {
+                throw new Error(`fMP4 轨道 ${trackId} 的时间刻度无法与已有文件匹配`);
+            }
+            this.#timescales.set(trackId, timescale);
         }
-        return null;
     }
 
-    _flush(callback: (error?: Error | null) => void) {
-        // 即使 #buffer 为空，如果透传计数器没归零（除非是 size=0 的无限块），也算作流异常截断
-        const isPassthroughIncomplete =
-            this.#state === "PASSTHROUGH" && this.#currentBoxSize !== 0n && this.#passthroughRemaining > 0n;
-        if (this.#buffer.length > 0 || isPassthroughIncomplete) {
-            this.#cleanup();
-            return callback(new Error("TimestampAdjuster: Stream ended abruptly with incomplete MP4 box payload."));
+    #readFragment(fragment: Buffer): void {
+        const fragmentBoxes = [...childBoxes(fragment)];
+        const sequence = fragmentBoxes.find((box) => box.type === "mfhd")?.data;
+        if (!sequence) throw new Error("fMP4 缺少片段序号");
+        if (this.#previousTracks) sequence.writeUInt32BE(this.#fragmentNumber + 1, 4);
+        this.#fragmentNumber = Math.max(this.#fragmentNumber, sequence.readUInt32BE(4));
+
+        for (const { type, data } of fragmentBoxes) {
+            if (type !== "traf") continue;
+            const boxes = [...childBoxes(data)];
+            const header = boxes.find((box) => box.type === "tfhd")?.data;
+            const timestamp = boxes.find((box) => box.type === "tfdt")?.data;
+            if (!header || !timestamp || timestamp[0] > 1) throw new Error("fMP4 缺少有效的轨道起始时间");
+
+            const flags = header.readUInt32BE(0);
+            const trackId = header.readUInt32BE(4);
+            if (!this.#timescales.has(trackId)) throw new Error(`fMP4 缺少轨道 ${trackId} 的初始化信息`);
+            const defaultDurationOffset = 8 + (flags & 1 ? 8 : 0) + (flags & 2 ? 4 : 0);
+            const defaultDuration = flags & 8
+                ? header.readUInt32BE(defaultDurationOffset)
+                : this.#defaultDurations.get(trackId) ?? 0;
+            let duration = 0n;
+            for (const box of boxes) {
+                if (box.type === "trun") duration += trackRunDuration(box.data, defaultDuration);
+            }
+            if (duration === 0n) continue;
+
+            const base = timestamp[0] === 1 ? timestamp.readBigUInt64BE(4) : BigInt(timestamp.readUInt32BE(4));
+            let offset = this.#offsets.get(trackId);
+            if (offset === undefined) {
+                const previous = this.#previousTracks?.[trackId];
+                offset = previous ? BigInt(previous.decodeEnd) - base : 0n;
+                this.#offsets.set(trackId, offset);
+            }
+            const start = base + offset;
+            const priorEnd = this.#ends.get(trackId);
+            if (priorEnd !== undefined && start < priorEnd) throw new Error(`fMP4 轨道 ${trackId} 的解码时间重叠`);
+            if (offset !== 0n) {
+                if (timestamp[0] === 1) timestamp.writeBigUInt64BE(start, 4);
+                else timestamp.writeUInt32BE(Number(start), 4);
+            }
+            this.#ends.set(trackId, start + duration);
         }
-        logger.log("TimestampAdjuster 校验通过", { colorful: true });
-        callback();
     }
-    #cleanup() {
-        this.#buffer = Buffer.alloc(0);
-    }
+}
+
+/** 从旧版断点的输出恢复轨道时间轴。 */
+export async function readFMP4Checkpoint(filePath: string): Promise<FMP4Checkpoint> {
+    const timeline = new FMP4Timeline();
+    const discard = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+    await pipeline(createReadStream(filePath), timeline, discard);
+    return timeline.checkpoint((await stat(filePath)).size);
 }

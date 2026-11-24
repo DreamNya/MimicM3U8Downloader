@@ -5,6 +5,8 @@
     "range": "",
     "concurrency": 16,
     "maxRetries": 3,
+    "skipFailedSegments": false,
+    "maxFailedSegments": 0,
     "timeout": 60000,
     "streamMerge": false,
     "streamMergeFMP4": false,

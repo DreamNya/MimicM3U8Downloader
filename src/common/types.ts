@@ -43,6 +43,10 @@ export interface DownloadOptions {
      * @default 3
      */
     maxRetries: number;
+    /** 跳过最终下载失败的非首个媒体分片 */
+    skipFailedSegments: boolean;
+    /** 最多可跳过的媒体分片数或百分比。数值小于 1 表示无上限。 */
+    maxFailedSegments: number | string;
     /**
      * 网络请求的超时毫秒
      * * 包含请求及连接时间，如果分片过大建议提高超时时间

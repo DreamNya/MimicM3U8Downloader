@@ -13,8 +13,11 @@ const keyCache = new Map<string, Buffer>();
  * 校验并缓存所有密钥
  * @throws {Error} 如果密钥下载失败或格式不合法，直接抛出异常以中断程序
  */
-export async function preflightKeys(segments: Segment[]): Promise<void> {
+export async function preflightKeys(segments: Segment[], mapKey?: Segment["keyInfo"]): Promise<void> {
     const keyUrls = new Set<string>();
+    if (mapKey?.url) {
+        keyUrls.add(mapKey.url);
+    }
     for (const seg of segments) {
         if (seg.keyInfo?.url) {
             keyUrls.add(seg.keyInfo.url);

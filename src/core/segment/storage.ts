@@ -1,6 +1,7 @@
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
+import type { FMP4Checkpoint } from "#src/core/transform/fMP4.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -40,6 +41,8 @@ export interface StreamMergeState {
     totalSegments: number;
     useFMP4: boolean;
     parts: string[];
+    skippedCount?: number;
+    fmp4?: FMP4Checkpoint;
 }
 
 /**
@@ -57,11 +60,14 @@ async function readStreamMergeState(
         // 校验结构、当前分片总数是否与历史记录完全一致
         if (
             useFMP4 === state.useFMP4 &&
-            typeof state.nextOffset === "number" &&
+            typeof state.nextOffset === "number" && Number.isSafeInteger(state.nextOffset) &&
+            state.nextOffset > 0 && state.nextOffset <= currentTotalSegments &&
             typeof state.totalSegments === "number" &&
             state.totalSegments === currentTotalSegments &&
             Array.isArray(state.parts) &&
-            state.parts.length > 0
+            state.parts.length > 0 && state.parts.every((part) => typeof part === "string") &&
+            (state.skippedCount === undefined || (Number.isSafeInteger(state.skippedCount) &&
+                state.skippedCount >= 0 && state.skippedCount < state.nextOffset))
         ) {
             logger.log(`➔ 流式断点续传分片数：${state.nextOffset}`);
             return {
@@ -69,6 +75,8 @@ async function readStreamMergeState(
                 nextOffset: state.nextOffset,
                 totalSegments: state.totalSegments,
                 parts: state.parts,
+                skippedCount: state.skippedCount,
+                fmp4: state.fmp4,
             };
         }
     } catch {
@@ -89,5 +97,7 @@ export function initStreamMergeState(
  * 持久化写入流式断点状态
  */
 export async function writeStreamMergeState(stateFilePath: string, state: StreamMergeState): Promise<void> {
-    await fs.writeFile(stateFilePath, JSON.stringify(state, null, 2), "utf-8");
+    const temporaryPath = `${stateFilePath}.tmp`;
+    await fs.writeFile(temporaryPath, JSON.stringify(state, null, 2), "utf-8");
+    await fs.rename(temporaryPath, stateFilePath);
 }

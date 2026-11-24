@@ -64,16 +64,10 @@ function monitorFFmpegProcess(
     });
 }
 
-export interface SegmentInfo {
-    info: string;
-    timescaleMap: Map<number, number>;
-}
-
-export async function parseSegmentInfo(filePath: string): Promise<SegmentInfo> {
+export async function parseSegmentInfo(filePath: string): Promise<string> {
     const info = await getVideoInfo(filePath);
     const lines = info.split(/\r?\n/);
     const formattedInfo: string[] = [];
-    const timescales: [number, number][] = [];
 
     const regexPattern = /Stream #\d+:(\d+)(?:\[(0x[0-9a-fA-F]+)\])?(?:\([a-zA-Z]+\))?:\s*(Video|Audio|Data):\s*(.*)/i;
 
@@ -87,28 +81,6 @@ export async function parseSegmentInfo(filePath: string): Promise<SegmentInfo> {
                 const type = match[3]; // 提取 Video/Audio/Data
                 const content = match[4]; // 提取详细描述
 
-                // 提取精确的 timescale (tbn) 如 "90k tbn" 或 "44100 tbn"
-                const tbnMatch = content.match(/(\d+(?:\.\d+)?k?)\s*tbn/i);
-                let timescaleNum: number | null = null;
-
-                if (tbnMatch) {
-                    const tbnStr = tbnMatch[1].toLowerCase();
-                    if (tbnStr.endsWith("k")) {
-                        // 处理带 'k' 的情况，例如 90k -> 90000
-                        timescaleNum = parseFloat(tbnStr) * 1000;
-                    } else {
-                        timescaleNum = parseInt(tbnStr, 10);
-                    }
-                } else if (type === "Audio") {
-                    // 如果音频流没有 tbn 则 timescale 等于采样率
-                    const hzMatch = content.match(/(\d+)\s*Hz/i);
-                    if (hzMatch) {
-                        timescaleNum = parseInt(hzMatch[1], 10);
-                    }
-                }
-
-                // [streamIndex, timescale]
-                timescales.push([Number(streamIndex) + 1, timescaleNum ?? 0]);
                 // 去除编码格式多余参数
                 const cleanedContent = content.replace(/\s*\([^)]+\)\s*\([^)]+\)/g, "").replace(/, start [ .\d]+/, "");
 
@@ -116,10 +88,7 @@ export async function parseSegmentInfo(filePath: string): Promise<SegmentInfo> {
             }
         }
     }
-    return {
-        info: formattedInfo.join("\n"),
-        timescaleMap: new Map(timescales),
-    };
+    return formattedInfo.join("\n");
 }
 
 function createFFmpegMergeProcess(outputFile: string): {
@@ -190,8 +159,8 @@ export function startStreamMerge(
 
     if (useFMP4) {
         args.push("-bsf:a", "aac_adtstoasc");
-        // 配置 fMP4 相关的 movflags，并将结果流输出到 pipe:1 (stdout)
-        args.push("-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "pipe:1");
+        // 保留轨道的初始时间差，省略每次封装的尾部索引以便追加。
+        args.push("-f", "mp4", "-movflags", "frag_keyframe+delay_moov+default_base_moof+skip_trailer", "pipe:1");
     } else {
         args.push(outputFile, "-y");
     }

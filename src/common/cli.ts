@@ -24,6 +24,8 @@ const defaultConfig: DownloadOptions = {
     range: "",
     concurrency: 16,
     maxRetries: 3,
+    skipFailedSegments: false,
+    maxFailedSegments: 0,
     timeout: 60000,
     streamMerge: false,
     streamMergeFMP4: false,
@@ -80,6 +82,17 @@ async function initConfig(): Promise<Readonly<DownloadRuntimeConfig>> {
 }
 
 async function formatConfig(config: DownloadInputConfig): Promise<DownloadRuntimeConfig> {
+    const { skipFailedSegments, maxFailedSegments } = config;
+    if (typeof skipFailedSegments !== "boolean") {
+        throw new Error("skipFailedSegments 必须是布尔值");
+    }
+    const validLimit = typeof maxFailedSegments === "number"
+        ? Number.isFinite(maxFailedSegments) && (maxFailedSegments < 1 || Number.isSafeInteger(maxFailedSegments))
+        : typeof maxFailedSegments === "string" && /^\d+(?:\.\d+)?%$/.test(maxFailedSegments) && parseFloat(maxFailedSegments) <= 100;
+    if (!validLimit) {
+        throw new Error('maxFailedSegments 必须是整数、小于 1 的数值或 0% 到 100% 之间的百分比字符串（例如 "10%"）');
+    }
+
     const saveName = sanitizeFilename(config.saveName);
     const workDir = config.workDir.replace(/\/$/, "");
     const tempDir = path.join(workDir, saveName);
@@ -142,7 +155,9 @@ function parseUserConfig(cliValues: CLIValues, baseConfig: DownloadOptions): Use
 
         const defaultType = typeof baseConfig[key as keyof DownloadOptions];
 
-        if (defaultType === "number") {
+        if (key === "maxFailedSegments") {
+            setConfigProperty(key, value.endsWith("%") ? value : value.trim() === "" ? NaN : Number(value));
+        } else if (defaultType === "number") {
             if (typeof value !== "string") {
                 throw new Error(`❌ 错误：'--${String(key)}' 参数必须是数字字符串`);
             }

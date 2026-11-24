@@ -1,10 +1,11 @@
 import { impit } from "#src/common/fetch.ts";
 import { logger } from "#src/common/logger.ts";
-import { getErrorMessage, sleep } from "#src/common/utils.ts";
+import { getErrorMessage } from "#src/common/utils.ts";
 import { type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
 import { normalizeMpegTsBuffer } from "#src/core/transform/mpegTs.ts";
 import type { ImpitOptions } from "impit";
+import { setTimeout as sleep } from "node:timers/promises";
 import { createSegmentStream } from "./crypto.ts";
 import type { ProgressState } from "./downloader.ts";
 import { formatFileInfo } from "./storage.ts";
@@ -19,17 +20,17 @@ interface DownloadToBufferOptions {
     sanitizeMpegTs?: boolean;
 }
 
-interface StreamPipelineOptions {
+interface OrderedDownloadOptions {
     segments: Segment[];
-    targetStream: NodeJS.WritableStream;
     concurrency: number;
     maxRetries: number;
-    initialBuffers?: Buffer[];
-    progress?: { count: number };
-    startIndex?: number;
-    externalSignal?: AbortSignal;
-    sanitizeMpegTs?: boolean;
+    startIndex: number;
+    signal: AbortSignal;
+    sanitizeMpegTs: boolean;
+    failFast: boolean;
 }
+
+type SegmentDownload = { index: number; buffer: Buffer } | { index: number; error: Error };
 
 /**
  * 流式下载单个分片到内存 Buffer
@@ -61,6 +62,9 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
         }
 
         const downloadedBuffer = Buffer.concat(chunks);
+        if (downloadedBuffer.length === 0) {
+            throw new Error("Response body empty");
+        }
 
         if (!sanitizeMpegTs) {
             return downloadedBuffer;
@@ -83,47 +87,28 @@ async function downloadSegmentToBuffer(info: DownloadToBufferOptions, retryCount
         logger.error(`分片 [${fileName}] 内存下载中断 (尝试第 ${retryCount + 1} 次): ${getErrorMessage(err)}`, { print: false });
 
         if (retryCount + 1 < maxRetries) {
-            await sleep(1000 * (retryCount + 1));
+            await sleep(1000 * (retryCount + 1), undefined, { signal });
             return downloadSegmentToBuffer(info, retryCount + 1);
         } else {
             const message = `分片 [${fileName}] 内存下载达到最大重试次数，下载失败`;
             logger.error(message, { print: false });
-            throw new Error(message);
+            throw new Error(message, { cause: err });
         }
     }
 }
 
 /**
- * 并发控制与背压管理管道
+ * 滑动窗口并发下载，按播放列表顺序消费结果。
  */
-export async function pipeSegmentsToStream(options: StreamPipelineOptions): Promise<void> {
-    const { segments, targetStream, concurrency, maxRetries, initialBuffers = [], startIndex = 0, externalSignal } = options;
-
-    // 写入首分片
-    for (const buf of initialBuffers) {
-        const canWrite = targetStream.write(buf);
-        if (!canWrite) {
-            await new Promise<void>((resolve) => targetStream.once("drain", resolve));
-        }
-    }
-
-    // 全局取消信号，防止孤儿并发任务浪费带宽与内存
+export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions): AsyncGenerator<SegmentDownload> {
+    const { segments, concurrency, maxRetries, startIndex, sanitizeMpegTs, failFast } = options;
     const controller = new AbortController();
-    const { signal } = controller;
-    const taskCache = new Map<number, Promise<Buffer | undefined>>();
-    // 记录错误源头
-    let firstError = null;
-
-    if (externalSignal) {
-        if (externalSignal.aborted) {
-            controller.abort();
-        } else {
-            externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
-        }
-    }
+    const signal = AbortSignal.any([controller.signal, options.signal]);
+    const taskCache = new Map<number, Promise<SegmentDownload>>();
+    let firstFailure: SegmentDownload | undefined;
 
     const triggerDownload = (segIndex: number) => {
-        if (segIndex < segments.length && !taskCache.has(segIndex)) {
+        if (segIndex < segments.length && !signal.aborted) {
             const seg = segments[segIndex]!;
             const { fileName } = formatFileInfo(seg.index);
 
@@ -133,23 +118,24 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
                 maxRetries,
                 keyInfo: seg.keyInfo,
                 signal,
-                sanitizeMpegTs: options.sanitizeMpegTs,
+                sanitizeMpegTs,
             })
                 .then((buf) => {
                     progressTracker.add("success", fileName);
                     progressTracker.print();
-                    return buf;
+                    return { index: segIndex, buffer: buf };
                 })
-                .catch((err) => {
+                .catch((err: unknown) => {
+                    const failure = { index: segIndex, error: new Error(getErrorMessage(err), { cause: err }) };
                     if (!signal.aborted) {
                         progressTracker.add("failed", `分片 [${fileName}] 下载失败`);
                         progressTracker.print();
-                        // 记录源头错误
-                        firstError = err;
-                        // 终止其他并发下载
-                        controller.abort();
+                        if (failFast) {
+                            firstFailure = failure;
+                            controller.abort();
+                        }
                     }
-                    return undefined; // 防止未处理的Promise拒绝
+                    return failure;
                 });
 
             taskCache.set(segIndex, promise);
@@ -163,48 +149,21 @@ export async function pipeSegmentsToStream(options: StreamPipelineOptions): Prom
             triggerDownload(i);
         }
 
-        // 顺序消费并推流
         for (let i = startIndex; i < segments.length; i++) {
-            if (i + concurrency - 1 < segments.length) {
-                triggerDownload(i + concurrency - 1);
+            const result = await taskCache.get(i);
+            if (options.signal.aborted) {
+                return;
             }
-
-            const buffer = await taskCache.get(i);
-
-            if (buffer === undefined) {
-                if (firstError) {
-                    throw firstError;
-                }
-                throw new Error("Operation aborted by user");
+            if (firstFailure) {
+                yield firstFailure;
+                return;
             }
-            const canWrite = targetStream.write(buffer);
-            if (!canWrite) {
-                await new Promise<void>((resolve, reject) => {
-                    const onDrain = () => {
-                        externalSignal?.removeEventListener("abort", onAbort);
-                        resolve();
-                    };
-                    const onAbort = () => {
-                        targetStream.removeListener("drain", onDrain);
-                        reject(new Error("Operation aborted by user"));
-                    };
-                    // 处理背压控制，防止 FFmpeg 消费慢导致 Node.js 内存堆积
-                    targetStream.once("drain", onDrain);
-                    if (externalSignal?.aborted) {
-                        onAbort();
-                    } else {
-                        externalSignal?.addEventListener("abort", onAbort, { once: true });
-                    }
-                });
-            }
-
+            yield result!;
             taskCache.delete(i);
-            if (options.progress) {
-                options.progress.count = i + 1;
-            }
+            triggerDownload(i + concurrency);
         }
-    } catch (err) {
+    } finally {
         controller.abort();
-        throw err;
+        await Promise.allSettled(taskCache.values());
     }
 }

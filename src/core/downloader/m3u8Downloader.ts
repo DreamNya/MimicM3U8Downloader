@@ -1,9 +1,9 @@
 import { config } from "#src/common/cli.ts";
 import { logger } from "#src/common/logger.ts";
 import { formatTime, getErrorMessage } from "#src/common/utils.ts";
-import { type SegmentInfo } from "#src/core/ffmpeg.ts";
 import { M3u8Parser, type Segment } from "#src/core/m3u8Parser.ts";
 import { progressTracker } from "#src/core/progressTracker.ts";
+import { getSegmentFailureLimit } from "#src/core/segment/failureLimit.ts";
 import { filterSegmentsByRange, initResumableDownload, initStreamMergeState, preflightKeys } from "#src/core/segment/index.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -18,8 +18,6 @@ export class M3U8Downloader {
     readonly #mapPath: string;
     readonly #stateFilePath: string;
     readonly #fMP4FilePath: string;
-    #initFilePath!: string;
-    #segmentInfo!: SegmentInfo;
 
     constructor() {
         this.#mapPath = path.join(config.tempDir, this.#mapFileName);
@@ -51,7 +49,7 @@ export class M3U8Downloader {
             logger.log(`总分片：${rawSegments.length}, 选择分片：${segments.length}`);
 
             // 预检密钥
-            await preflightKeys(segments);
+            await preflightKeys(segments, mapInfo?.keyInfo);
             // 预载流式断点状态
             const streamState = config.streamMerge
                 ? await initStreamMergeState(this.#stateFilePath, segments.length, config.streamMergeFMP4)
@@ -66,28 +64,27 @@ export class M3U8Downloader {
                   : await initResumableDownload();
 
             // 处理 MAP 文件的下载与信息读取
-            const meta = await handleMapAndInfo(mapInfo, isResumable, segments, this.#mapPath);
-            this.#initFilePath = meta.initFilePath;
-            this.#segmentInfo = meta.segmentInfo;
+            const firstSegmentPath = await handleMapAndInfo(mapInfo, isResumable, segments, this.#mapPath);
+            const failureLimit = getSegmentFailureLimit(segments.length);
 
             let skipCleanup = false;
 
             if (config.streamMerge) {
-                // 流式合并 暂不支持progressTracker
                 const result = await streamMergeWithFFmpeg({
                     segments,
-                    segmentInfo: this.#segmentInfo,
                     streamState,
-                    mapPath: this.#mapPath,
-                    initFilePath: this.#initFilePath,
+                    mapPath: mapInfo ? this.#mapPath : undefined,
+                    firstSegmentPath,
                     stateFilePath: this.#stateFilePath,
                     fMP4FilePath: this.#fMP4FilePath,
+                    failureLimit,
                 });
                 if (result.skipCleanup) {
                     skipCleanup = true;
                 }
             } else {
-                await startNormalDownload(segments, mapInfo, this.#mapPath, isResumable);
+                await startNormalDownload(segments, mapInfo, this.#mapPath, failureLimit);
+                skipCleanup = config.skipFailedSegments && config.noMerge;
             }
             await this.#handleDelAfterDone(skipCleanup);
         } catch (err) {
@@ -113,7 +110,7 @@ export class M3U8Downloader {
         // 是否清理临时文件夹
         if (config.enableDelAfterDone) {
             if (skipCleanup) {
-                logger.log("🚨 检测到有视频片段未迁移成功，已自动跳过临时文件夹清理以防数据丢失。", { colorful: true });
+                logger.log("已保留临时文件夹中的下载结果。", { colorful: true });
                 return;
             }
             // logger输出在临时文件夹，此时输出已无意义，因此先关闭日志流
