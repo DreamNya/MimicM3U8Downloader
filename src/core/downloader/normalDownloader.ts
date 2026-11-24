@@ -56,7 +56,7 @@ async function downloadAllSegments(segments: Segment[], sanitizeMpegTs: boolean,
                     signal: controller.signal,
                 });
                 if (result.ok) {
-                    progressTracker.add("success", fileName);
+                    progressTracker.recordSegmentDownloaded(fileName, result.bytes);
                 } else if (!controller.signal.aborted) {
                     progressTracker.add("failed", result.failedMessage);
                     if (failureLimit !== undefined && progressTracker.size("failed") > failureLimit) {

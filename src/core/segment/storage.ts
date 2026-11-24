@@ -19,8 +19,8 @@ export async function initResumableDownload(): Promise<boolean> {
         files.map(async (file) => {
             const filePath = path.join(config.tsDir, file);
             if (file.endsWith(".ts")) {
-                progressTracker.add("success", file);
                 const { size } = await fs.stat(filePath);
+                progressTracker.recordSegmentDownloaded(file, size);
                 progressTracker.recordChunk(size);
             } else if (file.endsWith(".tmp")) {
                 progressTracker.add("cache", file);

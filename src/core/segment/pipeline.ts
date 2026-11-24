@@ -125,7 +125,7 @@ export async function* downloadSegmentsInOrder(options: OrderedDownloadOptions):
                 sanitizeMpegTs,
             })
                 .then((buf) => {
-                    progressTracker.add("success", fileName);
+                    progressTracker.recordSegmentDownloaded(fileName, buf.length);
                     progressTracker.print();
                     return { index: segIndex, buffer: buf };
                 })

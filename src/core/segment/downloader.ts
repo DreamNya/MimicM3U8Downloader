@@ -23,10 +23,7 @@ export interface DownloadInfo {
     signal?: AbortSignal;
 }
 
-export interface DownloadResult {
-    ok: boolean;
-    failedMessage: string;
-}
+export type DownloadResult = { ok: true; bytes: number } | { ok: false; failedMessage: string };
 
 export interface ProgressState {
     bytes: number;
@@ -251,8 +248,6 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
     // 如果是加密文件不启用断点续传
     const hasTmpFile = !isEncrypted && (progressTracker.has("cache", tmpFileName) || retryCount > 0);
 
-    const result: DownloadResult = { ok: false, failedMessage: "" };
-
     const progressState: ProgressState = { bytes: 0 };
 
     try {
@@ -282,15 +277,13 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             if (status === 404 || status === 403) {
                 logger.error(message, { print: false });
                 await cleanTmpFile(tmpFilePath, sourceOffsetPath);
-                result.failedMessage = message;
-                return result;
+                return { ok: false, failedMessage: message };
             }
 
             if (status === 416) {
                 const isComplete = await handle416Error(response, resumeState, tmpFilePath, sourceOffsetPath, filePath, fileName);
                 if (isComplete) {
-                    result.ok = true;
-                    return result;
+                    return { ok: true, bytes: resumeState.localSize };
                 }
 
                 await cleanTmpFile(tmpFilePath, sourceOffsetPath);
@@ -341,8 +334,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
 
         // 如果重命名后的路径已存在，则默认覆盖
         await completeTmpFile(tmpFilePath, sourceOffsetPath, filePath);
-        result.ok = true;
-        return result;
+        return { ok: true, bytes: progressState.bytes + (writeFlag === "a" ? resumeState.localSize : 0) };
     } catch (err) {
         progressTracker.rollbackBytes(progressState.bytes);
         if (signal?.aborted || (err instanceof Error && (err as NodeJS.ErrnoException).path)) {
@@ -357,8 +349,7 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             await cleanTmpFile(tmpFilePath, sourceOffsetPath);
             const message = `分片 [${fileName}] 达到最大重试次数，下载失败`;
             logger.error(message, { print: false });
-            result.failedMessage = message;
-            return result;
+            return { ok: false, failedMessage: message };
         }
     } finally {
         if (hasTmpFile) {

@@ -11,8 +11,9 @@ interface StreamProgress {
 
 class ProgressTracker {
     #totalCount?: number;
-    #streamProgress?: StreamProgress;
+    #streamProgress?: StreamProgress & { writtenThisRun: number };
     #downloadedBytes = 0;
+    #completedSegmentBytes = 0;
     #lastBytes = 0;
     #currentSpeed = 0;
     #timer: NodeJS.Timeout | null = null;
@@ -25,7 +26,7 @@ class ProgressTracker {
 
     start(totalCount: number, streamProgress?: StreamProgress): void {
         this.#totalCount = totalCount;
-        this.#streamProgress = streamProgress;
+        this.#streamProgress = streamProgress && { ...streamProgress, writtenThisRun: 0 };
         this.#lastBytes = this.#downloadedBytes;
         this.#timer = setInterval(() => {
             const deltaBytes = this.#downloadedBytes - this.#lastBytes;
@@ -33,6 +34,13 @@ class ProgressTracker {
             this.#lastBytes = this.#downloadedBytes;
             this.print();
         }, 1000);
+    }
+
+    recordStreamSegmentWritten(): void {
+        if (this.#streamProgress) {
+            this.#streamProgress.writtenThisRun++;
+            this.print();
+        }
     }
 
     stop(): void {
@@ -56,11 +64,18 @@ class ProgressTracker {
         return this.#downloadedBytes;
     }
 
-    add(type: RecordType, value: string): void {
+    recordSegmentDownloaded(fileName: string, bytes: number): void {
+        if (!this.#sets.success.has(fileName)) {
+            this.#sets.success.add(fileName);
+            this.#completedSegmentBytes += bytes;
+        }
+    }
+
+    add(type: Exclude<RecordType, "success">, value: string): void {
         this.#sets[type].add(value);
     }
 
-    delete(type: RecordType, value: string): boolean {
+    delete(type: Exclude<RecordType, "success">, value: string): boolean {
         return this.#sets[type].delete(value);
     }
 
@@ -87,16 +102,21 @@ class ProgressTracker {
             return;
         }
 
+        const pendingMergeCount = this.#streamProgress ? completedThisRun - this.#streamProgress.writtenThisRun : 0;
+        const completedStr =
+            pendingMergeCount > 0 ? `${completedCount - pendingMergeCount}+${pendingMergeCount}` : completedCount;
         const failedCount = (this.#streamProgress?.failedBeforeRun ?? 0) + this.size("failed");
         const failedStr = failedCount ? `-${failedCount}` : "";
         const bytesBeforeRun = this.#streamProgress?.bytesBeforeRun ?? 0;
-        const downloadedBytes = bytesBeforeRun + this.#downloadedBytes;
+        const completedBytes = bytesBeforeRun + this.#completedSegmentBytes;
+        const downloadedBytes = Math.max(completedBytes, bytesBeforeRun + this.#downloadedBytes);
         const downloadedSizeStr = formatBytes(downloadedBytes);
+        const sampledSegmentCount = completedThisRun + (bytesBeforeRun > 0 ? completedBeforeRun : 0);
         // 流式合并已确认跳过的分片不计入大小预估。
-        const estimatedSegmentCount = this.#totalCount - completedBeforeRun - (this.#streamProgress ? failedCount : 0);
+        const remainingSegmentCount = this.#totalCount - completedCount - (this.#streamProgress ? failedCount : 0);
         const totalSize =
-            completedThisRun > 0
-                ? bytesBeforeRun + (this.#downloadedBytes / completedThisRun) * estimatedSegmentCount
+            sampledSegmentCount > 0
+                ? Math.max(downloadedBytes, completedBytes + (completedBytes / sampledSegmentCount) * remainingSegmentCount)
                 : undefined;
         const totalSizeStr = totalSize === undefined ? "" : `/${formatBytes(totalSize)}`;
         const percent = ((completedCount / this.#totalCount) * 100).toFixed(2);
@@ -107,7 +127,7 @@ class ProgressTracker {
                 : "";
 
         logger.print(
-            `下载进度: ${completedCount}/${this.#totalCount}${failedStr} (${percent}%) -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`
+            `下载进度: ${completedStr}/${this.#totalCount}${failedStr} (${percent}%) -- ${downloadedSizeStr}${totalSizeStr} (${currentSpeedStr}${timeStr})`
         );
     }
 }

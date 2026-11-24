@@ -123,6 +123,7 @@ export async function streamMergeWithFFmpeg(options: StreamMergeOptions): Promis
             }
         }
         await active.part.write(buffer);
+        progressTracker.recordStreamSegmentWritten();
     };
 
     const saveCheckpoint = async (): Promise<void> => {
