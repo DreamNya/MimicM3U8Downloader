@@ -169,7 +169,12 @@ export function startStreamMerge(
         args.push(outputFile, "-y");
     }
 
-    const ffmpegChild = spawn("ffmpeg", args);
+    // Ctrl+C 由下载器处理，FFmpeg 通过管道 EOF 完成封装。
+    const ffmpegChild = spawn("ffmpeg", args, {
+        detached: process.platform !== "win32",
+        windowsHide: true,
+        stdio: "pipe",
+    });
 
     const processExitPromise = monitorFFmpegProcess(ffmpegChild, {
         logTitle: "FFmpeg 封装日志",
