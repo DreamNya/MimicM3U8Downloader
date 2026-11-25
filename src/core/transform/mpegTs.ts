@@ -291,7 +291,7 @@ function startsWithBytes(data: Uint8Array, signature: readonly number[]): boolea
     return signature.every((value, index) => data[index] === value);
 }
 
-export function hasImageFileSignature(data: Uint8Array): boolean {
+function hasImageFileSignature(data: Uint8Array): boolean {
     // PNG
     if (startsWithBytes(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
         return true;
@@ -321,7 +321,7 @@ export function hasImageFileSignature(data: Uint8Array): boolean {
 /**
  * 在前 64 KiB 中查找可信的 MPEG-TS 起始位置
  */
-export function findMpegTsOffset(data: Uint8Array): number {
+function findMpegTsOffset(data: Uint8Array): number {
     const maxOffset = Math.min(SEARCH_LIMIT - 1, data.length - MIN_SYNC_PACKETS * TS_PACKET_SIZE);
 
     if (maxOffset < 0) {

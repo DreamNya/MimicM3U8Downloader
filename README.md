@@ -116,7 +116,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | `concurrency`           | number           | `16`       | 分片并发请求数                                                                                                                                   |
 | `maxRetries`            | number           | `3`        | 网络请求失败时自动重试次数（403 404时不会重试）                                                                                                  |
 | `timeout`               | number           | `60000`    | 数据下载超时（毫秒）<br />分片创建请求后，若超过 timeout 未收到响应，则判定为超时<br />分片收到响应后，若连续 timeout 未收到新数据，则判定为超时 |
-| `totalTimeout`          | number           | `600000`   | 分片连接超时（毫秒）<br / >分片创建请求后，若超过 totalTimout 未完成下载，则判定为超时<br / >（可防止长时间低速下载）                            |
+| `totalTimeout`          | number           | `600000`   | 分片连接超时（毫秒）<br />分片创建请求后，若超过 totalTimout 未完成下载，则判定为超时<br />（可防止长时间低速下载）                              |
 | `streamMerge`           | boolean          | `false`    | 流式合并（启用后忽略`noMerge`, `forceMerge`） <br>流式合并模式参数作用 详见 [[下载模式对比](#下载模式对比)] （下同）                             |
 | `streamMergeFMP4`       | boolean          | `false`    | 流式合并时输出格式为fMP4<br />（启用后忽略`streamMergeForceMerge`）                                                                              |
 | `streamMergeForceMerge` | boolean          | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件                                                                                              |
