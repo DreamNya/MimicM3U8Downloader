@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { cacheRoot, pipeMp4, removeRun, run, segmentSeconds, serveFixtures, variants } from "./fixtures.mjs";
+import { checkTimeline, hashFrames } from "./media.mjs";
 
 async function downloadToMemory(url, options, range, skip) {
     const { mock } = await import("node:test");
@@ -125,82 +126,6 @@ async function downloadWithWorker(url, options, name, directory, range, releaseF
     }
     await run(process.execPath, args);
     return path.join(directory, `${name}.mp4`);
-}
-
-function ffmpegInput(video) {
-    return Buffer.isBuffer(video) ? ["pipe:0", video] : [video, undefined];
-}
-
-async function hashFrames(video, indexes) {
-    const [input, buffer] = ffmpegInput(video);
-    // -skip_frame nokey makes n the keyframe index, and framehash hashes decoded pixels.
-    const select = indexes.map((index) => `eq(n,${index})`).join("+");
-    const output = await run(
-        "ffmpeg",
-        [
-            "-v",
-            "error",
-            "-xerror",
-            "-threads",
-            "1",
-            "-skip_frame",
-            "nokey",
-            "-i",
-            input,
-            "-map",
-            "0:v:0",
-            "-vf",
-            `select='${select}'`,
-            "-fps_mode",
-            "passthrough",
-            "-frames:v",
-            String(indexes.length),
-            "-f",
-            "framehash",
-            "pipe:1",
-        ],
-        buffer
-    );
-    const hashes = output
-        .toString()
-        .split(/\r?\n/)
-        .filter((line) => /^\d+,/.test(line));
-    assert.equal(hashes.length, indexes.length, "Unexpected number of decoded keyframes");
-    return hashes.map((line) => line.split(",").at(-1).trim());
-}
-
-async function checkTimeline(video, expectedDuration) {
-    const [input, buffer] = ffmpegInput(video);
-    const output = await run(
-        "ffprobe",
-        ["-v", "error", "-show_packets", "-show_entries", "packet=codec_type,dts_time,duration_time", "-of", "json", input],
-        buffer
-    );
-    const { packets } = JSON.parse(output);
-    const durations = {};
-    for (const [type, maxInterval] of [
-        ["video", 0.041],
-        ["audio", 0.045],
-    ]) {
-        const track = packets.filter((packet) => packet.codec_type === type);
-        assert.ok(track.length, `Missing ${type} packets`);
-        const timestamps = track.map((packet) => Number(packet.dts_time));
-        assert.ok(timestamps.every(Number.isFinite), `Missing ${type} DTS`);
-        const duration = timestamps.at(-1) + Number(track.at(-1).duration_time) - timestamps[0];
-        assert.ok(Number.isFinite(duration), `Missing ${type} duration`);
-        if (expectedDuration !== undefined) {
-            for (let i = 1; i < timestamps.length; i++) {
-                const interval = timestamps[i] - timestamps[i - 1];
-                assert.ok(interval > 0 && interval <= maxInterval, `${type} DTS gap at ${timestamps[i]}: ${interval}s`);
-            }
-            assert.ok(
-                Math.abs(duration - expectedDuration) <= 0.15,
-                `${type} duration ${duration}s, expected ${expectedDuration}s`
-            );
-        }
-        durations[type] = duration;
-    }
-    return durations;
 }
 
 function samplePositions(length, count, join) {

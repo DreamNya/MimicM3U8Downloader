@@ -240,10 +240,13 @@ const contentTypes = {
 };
 
 export function serveFixtures(files, onRequest) {
-    return listen((request, response) => {
+    return listen(async (request, response) => {
         const name = request.url.split("?")[0];
         const asset = files.get(name);
-        const failure = onRequest?.(name, request.headers.range);
+        const failure = await onRequest?.(name, request.headers.range);
+        if (response.destroyed) {
+            return;
+        }
         if (failure || !asset) {
             response.writeHead(failure || 404).end();
             return;

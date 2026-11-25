@@ -1,7 +1,7 @@
 import path from "node:path";
 import { parseArgs } from "node:util";
-import { getFixtures, segmentSeconds, serveFixtures, variants } from "./local-hls/fixtures.mjs";
-import { verify } from "./local-hls/verify.mjs";
+import { getFixtures, segmentSeconds, serveFixtures, variants } from "./fixtures.mjs";
+import { verify } from "./verify.mjs";
 
 const quickSeconds = 12;
 const longSeconds = 300;
