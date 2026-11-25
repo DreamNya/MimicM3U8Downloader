@@ -65,7 +65,7 @@ export class M3U8Downloader {
 
             // 处理 MAP 文件的下载与信息读取
             const firstSegmentPath = await handleMapAndInfo(mapInfo, isResumable, segments, this.#mapPath);
-            const failureLimit = getSegmentFailureLimit(segments.length);
+            const failureLimit = getSegmentFailureLimit(segments.length, config);
 
             let skipCleanup = false;
 

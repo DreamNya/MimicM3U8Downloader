@@ -1,10 +1,12 @@
-import { config } from "#src/common/cli.ts";
+import type { DownloadOptions } from "#src/common/types.ts";
 
-export function getSegmentFailureLimit(segmentCount: number): number | undefined {
-    if (!config.skipFailedSegments) {
+export function getSegmentFailureLimit(
+    segmentCount: number,
+    { skipFailedSegments, maxFailedSegments: limit }: Pick<DownloadOptions, "skipFailedSegments" | "maxFailedSegments">
+): number | undefined {
+    if (!skipFailedSegments) {
         return undefined;
     }
-    const limit = config.maxFailedSegments;
     if (typeof limit === "number") {
         return limit < 1 ? Infinity : limit;
     }
