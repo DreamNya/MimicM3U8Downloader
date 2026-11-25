@@ -119,7 +119,7 @@ export class M3u8Parser {
         let totalDuration = 0;
         let mapInfo: ParsedM3u8["mapInfo"];
 
-        let mediaSequence = 0;
+        let mediaSequence = 0n;
         let currentKeyInfo: { method: string; url?: string; rawIv?: string } | undefined = undefined;
 
         for (let line of lines) {
@@ -138,6 +138,11 @@ export class M3u8Parser {
                         const [duration] = value.split(",");
                         currentDuration = Number(duration) || 0;
                         totalDuration += currentDuration;
+                    } else if (tag === "#EXT-X-MEDIA-SEQUENCE") {
+                        if (!/^\d{1,20}$/.test(value.trim()) || BigInt(value) > 0xffff_ffff_ffff_ffffn) {
+                            throw new Error("无效的 EXT-X-MEDIA-SEQUENCE");
+                        }
+                        mediaSequence = BigInt(value);
                     } else if (tag === "#EXT-X-KEY") {
                         const methodMatch = value.match(/METHOD=([^,]+)/);
                         const method = methodMatch ? methodMatch[1].trim() : "NONE";
@@ -193,7 +198,7 @@ export class M3u8Parser {
                         } else {
                             // 如果未指定 IV，标准 HLS 规定使用大端序的媒体序列号（16字节，前面补零）
                             ivBuffer = Buffer.alloc(16);
-                            ivBuffer.writeUInt32BE(mediaSequence, 12);
+                            ivBuffer.writeBigUInt64BE(mediaSequence, 8);
                         }
 
                         segmentKeyInfo = {
@@ -206,7 +211,7 @@ export class M3u8Parser {
                     segments.push({
                         url: this.#resolveUrl(line, baseUrl),
                         duration: currentDuration,
-                        index: mediaSequence,
+                        index: segments.length,
                         keyInfo: segmentKeyInfo,
                     });
 

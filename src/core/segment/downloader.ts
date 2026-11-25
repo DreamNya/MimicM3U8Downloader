@@ -157,8 +157,8 @@ async function handle416Error(
     fileName: string
 ): Promise<boolean> {
     const contentRange = response.headers.get("content-range") || "";
-    const match = contentRange.match(/\/(\d+)$/);
-    const serverSize = match ? parseInt(match[1], 10) : -1;
+    const match = /^bytes \*\/(\d+)$/i.exec(contentRange);
+    const serverSize = match ? Number(match[1]) : -1;
 
     const localDescription =
         resumeState.sourceOffset > 0
@@ -169,7 +169,12 @@ async function handle416Error(
         print: false,
     });
 
-    if (serverSize > 0 && resumeState.localSize > 0 && resumeState.sourceSize === serverSize) {
+    if (
+        Number.isSafeInteger(serverSize) &&
+        serverSize > 0 &&
+        resumeState.localSize > 0 &&
+        resumeState.sourceSize === serverSize
+    ) {
         logger.warn(`分片 [${fileName}] 本地缓存完整，完成下载`, { print: false });
         await completeTmpFile(tmpFilePath, sourceOffsetPath, filePath);
         return true;
@@ -177,6 +182,25 @@ async function handle416Error(
 
     logger.warn(`分片 [${fileName}] 本地缓存与服务器返回不符，清空临时文件重新下载`, { print: false });
     return false;
+}
+
+function getResumeLength(response: ImpitResponse, sourceSize: number): number | undefined {
+    const range = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(response.headers.get("content-range") ?? "");
+    if (!range) {
+        return undefined;
+    }
+
+    const start = Number(range[1]);
+    const end = Number(range[2]);
+    const total = range[3] === "*" ? undefined : Number(range[3]);
+    if (start !== sourceSize || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end < start) {
+        return undefined;
+    }
+    if (total !== undefined && (!Number.isSafeInteger(total) || end + 1 !== total)) {
+        return undefined;
+    }
+
+    return end - start + 1;
 }
 
 /**
@@ -300,6 +324,12 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
         const isPartial = response.status === 206;
         // 'a'→追加写入 'w'→覆盖写入
         const writeFlag = isPartial && resumeState.localSize > 0 ? "a" : "w";
+        const resumeLength = writeFlag === "a" ? getResumeLength(response, resumeState.sourceSize) : undefined;
+        if (writeFlag === "a" && resumeLength === undefined) {
+            void body.cancel().catch(() => void 0);
+            await cleanTmpFile(tmpFilePath, sourceOffsetPath);
+            throw new Error("断点续传响应的 Content-Range 无效，将重新下载分片");
+        }
 
         if (isPartial) {
             logger.log(`分片 [${fileName}] 开始断点续传`, { print: false });
@@ -327,6 +357,11 @@ export async function downloadSegment(info: DownloadInfo, retryCount = 0): Promi
             },
             signal
         );
+
+        if (resumeLength !== undefined && progressState.bytes !== resumeLength) {
+            await cleanTmpFile(tmpFilePath, sourceOffsetPath);
+            throw new Error("断点续传响应的长度与 Content-Range 不符，将重新下载分片");
+        }
 
         if (progressState.bytes === 0 && (writeFlag !== "a" || resumeState.localSize === 0)) {
             throw new Error("Response body empty");

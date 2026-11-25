@@ -12,21 +12,32 @@ import { checkTimeline } from "./media.mjs";
 const exec = promisify(execFile);
 const repo = fileURLToPath(new URL("../../", import.meta.url));
 const requests = [];
+const ranges = [];
 const missing = new Set();
+const mapPrefix = Buffer.from("prefix");
+let initMap;
 let root;
 let server;
-let heldRequest;
+let interceptRequest;
 
 before(async () => {
     const { files } = await getFixtures(12, "disk");
     root = await mkdtemp(path.join(os.tmpdir(), "mimic-hls-test-"));
-    server = await serveFixtures(files, (pathname) => {
+    initMap = files.get("/fmp4/init.mp4");
+    const rangedMapPlaylist = files
+        .get("/fmp4/media.m3u8")
+        .toString()
+        .replace('URI="init.mp4"', `URI="init.mp4",BYTERANGE="${initMap.length}@${mapPrefix.length}"`)
+        .replace(/^segment-/gm, "/fmp4/segment-");
+    files.set("/map-range/media.m3u8", Buffer.from(rangedMapPlaylist));
+    files.set("/map-range/init.mp4", Buffer.concat([mapPrefix, initMap, Buffer.from("suffix")]));
+
+    server = await serveFixtures(files, (pathname, range) => {
         requests.push(pathname);
-        if (heldRequest?.pathname === pathname) {
-            heldRequest.arrived();
-            return heldRequest.release;
+        if (range) {
+            ranges.push({ pathname, range });
         }
-        return missing.has(pathname) ? 404 : undefined;
+        return interceptRequest?.(pathname) ?? (missing.has(pathname) ? 404 : undefined);
     });
 });
 
@@ -42,6 +53,7 @@ after(async () => {
 
 function failSegments(...paths) {
     requests.length = 0;
+    ranges.length = 0;
     missing.clear();
     for (const segment of paths) missing.add(segment);
 }
@@ -101,6 +113,27 @@ async function assertContinuousFile(name, expectedSeconds) {
     await checkTimeline(file, expectedSeconds, { maxAudioInterval: 0.03, durationTolerance: 0.1 });
     await run("ffmpeg", ["-v", "error", "-xerror", "-i", file, "-f", "null", "-"]);
 }
+
+test("the Worker fetches only the declared byte range of an fMP4 MAP", async () => {
+    failSegments();
+    const name = "map-byte-range";
+    await download(name, "map-range", "--streamMerge", "true", "--streamMergeFMP4", "true");
+
+    assert.deepEqual(ranges, [
+        { pathname: "/map-range/init.mp4", range: `bytes=${mapPrefix.length}-${mapPrefix.length + initMap.length - 1}` },
+    ]);
+    assert.deepEqual(await readFile(path.join(root, name, "!MAP.ts")), initMap);
+    await assertContinuousFile(name, 12);
+});
+
+test("a Worker time range includes only the segments overlapping its boundaries", async () => {
+    failSegments();
+    const name = "time-range";
+    await download(name, "ts", "--range", "00:00:02-00:00:06", "--streamMerge", "true", "--streamMergeFMP4", "true");
+
+    assert.deepEqual(requests, ["/ts/media.m3u8", "/ts/segment-1.ts", "/ts/segment-2.ts"]);
+    await assertContinuousFile(name, 4);
+});
 
 test("cached downloads use the selected range as the percentage denominator", async () => {
     failSegments("/ts/segment-1.ts");
@@ -220,7 +253,12 @@ test("interrupting a streaming download before the next successful segment leave
         failSegments("/ts/segment-2.ts", "/ts/segment-3.ts");
         const arrival = Promise.withResolvers();
         const release = Promise.withResolvers();
-        heldRequest = { pathname: "/ts/segment-4.ts", arrived: arrival.resolve, release: release.promise };
+        interceptRequest = (pathname) => {
+            if (pathname === "/ts/segment-4.ts") {
+                arrival.resolve();
+                return release.promise;
+            }
+        };
         // Notify only the worker so FFmpeg can finish its current output normally on Windows and Unix.
         const handler = encodeURIComponent(
             "process.stdin.once('data', () => { process.stdin.pause(); process.emit('SIGINT'); });"
@@ -232,7 +270,7 @@ test("interrupting a streaming download before the next successful segment leave
             running.child.stdin.end("interrupt");
             ({ stderr } = await running);
         } finally {
-            heldRequest = undefined;
+            interceptRequest = undefined;
             release.resolve(404);
         }
         assert.match(stderr, /分片 \[2\] 下载失败\r?\n/);
@@ -253,6 +291,50 @@ test("interrupting a streaming download before the next successful segment leave
         if (mode === "fmp4") await assertContinuousFile(name, 12);
         else await stat(path.join(root, `${name}.mp4`));
     }
+});
+
+test("a concurrent Worker resumes at the first unconfirmed tail segment", async () => {
+    const name = "concurrent-tail";
+    const flags = [
+        "--streamMerge",
+        "true",
+        "--streamMergeFMP4",
+        "true",
+        "--concurrency",
+        "3",
+        "--timeout",
+        "2500",
+        "--totalTimeout",
+        "5000",
+    ];
+    failSegments("/ts/segment-5.ts");
+    const tailRequested = Promise.withResolvers();
+    interceptRequest = (pathname) => {
+        if (pathname === "/ts/segment-5.ts") {
+            tailRequested.resolve(true);
+        }
+        if (pathname === "/ts/segment-4.ts") {
+            return tailRequested.promise.then((requested) => (requested ? 404 : 503));
+        }
+    };
+    try {
+        await assert.rejects(
+            download(name, "ts", ...flags),
+            (err) => err.code === 1 && /末尾 2 个分片下载失败，已保存断点/.test(err.stderr)
+        );
+        assert.ok(requests.includes("/ts/segment-5.ts"));
+        const checkpoint = JSON.parse(await readFile(path.join(root, name, "stream_merge_state.json"), "utf8"));
+        assert.equal(checkpoint.nextOffset, 4);
+        assert.equal(checkpoint.skippedCount, 0);
+    } finally {
+        interceptRequest = undefined;
+        tailRequested.resolve(false);
+    }
+
+    failSegments();
+    await download(name, "ts", ...flags);
+    assert.deepEqual([...requests].sort(), ["/ts/media.m3u8", "/ts/segment-4.ts", "/ts/segment-5.ts"]);
+    await assertContinuousFile(name, 12);
 });
 
 test("a streaming download preserves the checkpoint before an unconfirmed failed tail", async () => {

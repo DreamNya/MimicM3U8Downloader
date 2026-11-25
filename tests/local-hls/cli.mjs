@@ -6,7 +6,7 @@ import { verify } from "./verify.mjs";
 const quickSeconds = 12;
 const longSeconds = 300;
 
-const help = `Local HLS download tests (Node.js 26, ffmpeg with drawtext/libx264, ffprobe)
+const help = `Local HLS download tests (Node.js v26, ffmpeg with drawtext/libx264, ffprobe)
 
 npm run test:hls:build  -- [--seconds n] [--fixtures disk|memory]
 npm run test:hls:serve  -- [--seconds ${longSeconds}] [--fixtures disk|memory]

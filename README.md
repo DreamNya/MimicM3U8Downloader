@@ -376,14 +376,14 @@ curl -X POST "http://127.0.0.1:12345" \
 
 ### npm 命令
 
-| 用途             | 命令                                                                                    |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| 日常入口         | `npm run server` 启动服务，`npm run build` 构建，`npm run check` 检查代码               |
-| 测试总入口       | `npm test` 依次运行代码回归和快速 HLS 测试                                              |
-| 代码回归测试     | `npm run test:code` 检查 Worker 分片失败处理、进度估算、读取超时和下载顺序              |
-| HLS 测试         | `npm run test:hls` 快速 HLS 测试，`test:hls:*` 提供长视频、续传、素材与本地服务等入口   |
-| 单项代码维护     | `typecheck`、`lint`、`format:check`、`format`、`knip`                                   |
-| Windows URL 协议 | `registerUrlProtocol`、`unregisterUrlProtocol`                                          |
+| 用途             | 命令                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| 日常入口         | `npm run server` 启动服务，`npm run build` 构建，`npm run check` 检查代码             |
+| 测试总入口       | `npm test` 依次运行代码回归和快速 HLS 测试                                            |
+| 代码回归测试     | `npm run test:code` 检查播放列表、AES 解密、分片续传、Worker 选段和失败恢复等行为     |
+| HLS 测试         | `npm run test:hls` 快速 HLS 测试，`test:hls:*` 提供长视频、续传、素材与本地服务等入口 |
+| 单项代码维护     | `typecheck`、`lint`、`format:check`、`format`、`knip`                                 |
+| Windows URL 协议 | `registerUrlProtocol`、`unregisterUrlProtocol`                                        |
 
 ### SEA单文件编译
 
@@ -414,7 +414,7 @@ npm run build
 npm run test:hls:build           # 生成 12 秒和 5 分钟基准视频（仅需首次运行，后续所有测试可复用）
 
 npm test                         # 依次运行以下两组测试
-npm run test:code                # Worker 失败场景、进度估算、读取超时和下载顺序
+npm run test:code                # 播放列表、AES、磁盘续传和 Worker 端到端回归
 npm run test:hls                 # 快速 HLS 测试（仅运行在内存、不写入磁盘）
 npm run test:hls:5min            # 5 分钟 AES-128 fMP4，抽查 2 张关键帧
 npm run test:hls:serve:cached    # 读取缓存并启动本地服务
