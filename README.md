@@ -17,7 +17,7 @@ GitHub: <https://github.com/DreamNya/MimicM3U8Downloader>
 - **精准区间下载**： 支持解析并下载指定范围（Range）的分片，满足按需下载需求
 - **流式断点续传**：集成分片完整性校验机制，支持中断进度秒传，大幅减少重复磁盘 I/O 损耗
 - **多线程高效并发**：采用多线程异步并发请求，最大化利用网络带宽，提升下载吞吐量
-- **高性能流式合并**：支持分片内存暂存并实时写入 FFmpeg 管道，跳过中间产物损耗，降低约 50% 磁盘 I/O 开销，有效提升合并效率并延长 SSD 使用寿命。
+- **高性能流式合并**：支持分片内存暂存并实时写入 FFmpeg 管道，跳过中间产物损耗，降低约 50% 磁盘 I/O 开销，有效提升合并效率并延长 SSD 使用寿命
 - **FFmpeg 自动封装**：分片下载完成后自动调用 FFmpeg，实现无损、快速的合并与封装
 - **三模一体化运行**
 
@@ -73,7 +73,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 > 编译模式可跳过
 
-直接运行源码需要 **Node.js v23.6.0 或更高版本**，推荐使用 **Node.js 26 LTS**。
+直接运行源码需要 **Node.js v23.6.0 或更高版本**，推荐使用 **Node.js v26 LTS**
 
 （低版本Node.js请手动添加flag`--experimental-strip-types`或使用`ts-node`）
 
@@ -87,7 +87,7 @@ https://wwbwh.lanzouw.com/b01d72je4h
 
 ## 📝 配置文件说明
 
-项目包含两个全局配置文件，位于 `config/` 目录。
+项目包含两个全局配置文件，位于 `config/` 目录
 
 ### 📂 config/server.setting.json
 
@@ -122,13 +122,11 @@ https://wwbwh.lanzouw.com/b01d72je4h
 | `streamMergeForceMerge` | boolean          | `false`    | 流式合并断点续传时强制将多个mp4片段合并为1个mp4文件                                                                                              |
 | `noMerge`               | boolean          | `false`    | 分片下载完毕不自动合并                                                                                                                           |
 | `forceMerge`            | boolean          | `false`    | 下分片下载不完整时强制合并                                                                                                                       |
-| `skipFailedSegments`    | boolean          | `false`    | 跳过最终下载失败的媒体分片。首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务                                                                      |
-| `maxFailedSegments`     | number \| string | `0`        | 最多可跳过的分片数。整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整。省略或传入小于 1 的数值表示无上限                 |
+| `skipFailedSegments`    | boolean          | `false`    | 跳过最终下载失败的媒体分片<br />首个媒体分片和 `EXT-X-MAP` 下载失败时会终止任务                                                                  |
+| `maxFailedSegments`     | number \| string | `0`        | 最多可跳过的分片数<br />整数 `3` 允许跳过 3 片，`"10%"` 按 `range` 选中的媒体分片数计算并向下取整<br />省略或传入小于 1 的数值表示无上限         |
 | `enableDelAfterDone`    | boolean          | `false`    | 下载完毕后删除临时文件夹                                                                                                                         |
 | `pauseAfterDone`        | boolean          | `true`     | 下载完毕后暂停交互窗口                                                                                                                           |
 | `debug`                 | boolean          | `false`    | 记录debug中间产物                                                                                                                                |
-
-分片读取共用一个单调时钟，采样间隔最多 1 秒。等待数据的超时判定会为采样误差留出余量。
 
 ---
 
@@ -376,22 +374,50 @@ curl -X POST "http://127.0.0.1:12345" \
 
 本项目在部分设计方面参考了`N_m3u8DL-CLI`项目
 
+### npm 命令
+
+| 用途             | 命令                                                                                                  |
+| ---------------- | ----------------------------------------------------------------------------------------------------- |
+| 日常入口         | `npm run server` 启动服务，`npm run build` 构建，`npm run check` 检查代码，`npm test` 跑快速 HLS 回归 |
+| HLS 专项测试     | `test:hls:*` 提供长视频、续传、素材与本地服务等入口                                                   |
+| 单项代码维护     | `typecheck`、`lint`、`format:check`、`format`、`knip`                                                 |
+| Windows URL 协议 | `registerUrlProtocol`、`unregisterUrlProtocol`                                                        |
+
 ### SEA单文件编译
 
-使用 **Node.js 26 LTS（最低 26.9.0）** 在目标平台构建。SEA 将 TypeScript 源码和运行依赖嵌入可执行文件，启动时由 Node.js 擦除类型。Worker 会将内置的 `impit` 原生模块提取到系统临时目录。Windows 会复用已提取的模块，Linux 和 macOS 会在进程退出时清理。
+使用 **Node.js v26 LTS（最低 v26.9.0）** 在目标平台构建  
+SEA 将 TypeScript 源码和运行依赖嵌入可执行文件，启动时由 Node.js 擦除类型  
+Worker 会将内置的 `impit` 原生模块提取到系统临时目录  
+Windows 会复用已提取的模块，Linux 和 macOS 会在进程退出时清理
 
-手动SEA编译方法（单平台）
+- **手动SEA编译方法（单平台）**
 
 ```bash
 npm ci
 npm run build
 ```
 
-GitHub Action（多平台）
+- **GitHub Action（多平台）**
 
 ```bash
 .github\workflows\build.yml
 ```
+
+### 本地 HLS 模拟下载测试
+
+需要 Node.js 以及 PATH 上带 `drawtext` 和 `libx264` 的 FFmpeg、FFprobe  
+生成器使用带画面计时的 H.264 + AAC 视频，每 2 秒切一片，提供明文 TS、明文 fMP4、AES-128 TS 和 加密MAP AES-128 fMP4
+
+```bash
+npm run test:hls:build           # 生成 12 秒和 5 分钟基准视频（仅需首次运行，后续所有测试可复用）
+
+npm test                         # 复用 12 秒素材，成片和报告留在内存
+npm run test:hls:5min            # 5 分钟 AES-128 fMP4，抽查 2 张关键帧
+npm run test:hls:serve:cached    # 读取缓存并启动本地服务
+npm run test:hls:resume          # 完整 Worker 的 AES-128 fMP4 续传
+```
+
+- 更多测试参数详见[[tests/local-hls.mjs]](./tests/local-hls.mjs)
 
 ### TODO
 
